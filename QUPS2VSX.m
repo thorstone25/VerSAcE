@@ -51,7 +51,7 @@ function [vBlock, vTrans, vPData, vTW, vTX, vRcv, vRecon, display_image_process,
     bufLen = 256 * ceil((maxAcqLength - P.startDepth) * spw / 256); % only modulus 256 sample buffer length supported
     
     %% Allocate buffers and Set Parameters
-    toggle = false;
+    toggle = true;
     F = 1; % number of frames
     T = 256 * 20; %% bufLen;
     
@@ -230,7 +230,7 @@ function [vBlock, vTrans, vPData, vTW, vTX, vRcv, vRecon, display_image_process,
     save_rf_data.classname = 'External';
     save_rf_data.method = 'RFDataStore';
     save_rf_data.Parameters = {'srcbuffer','receive',...
-                         'srcbufnum',2,...
+                         'srcbufnum',1,... %TODO: handle in linking stage.
                          'srcframenum',0,...
                          'dstbuffer','none'};
 
@@ -298,8 +298,7 @@ function [vBlock, vTrans, vPData, vTW, vTX, vRcv, vRecon, display_image_process,
    
     %% ADDED UI
     vUI = VSXUI();
-    vUI.Control =  {'UserB1','Style','VsToggleButton','Label','SAVE RFData'};
-    vUI.Callback = text2cell('%SAVERFDataCallback');
+    vUI.Control =  {'UserB1','Style','VsToggleButton','Label','SAVE RFData', 'Callback', @RFDataStore};
     
     %% Block
     vBlock = VSXBlock();
@@ -317,52 +316,7 @@ function [vBlock, vTrans, vPData, vTW, vTX, vRcv, vRecon, display_image_process,
         toggle = false;
     end
     %SAVERFDataCallback
-    
-    %%
-    function RFDataStore(rcvbuf)
-        if toggle
-            disp('RF')
-            RcvData{1} = rcvbuf;
-            full_path = 'home/verasonics/Ameya'; % where to save?
-
-
-            % Get structs
-            Resource = evalin('base', 'vResource');
-% %             Trans	 = evalin('base', 'vTrans');
-            TW		 = evalin('base', 'vTW');
-            TX		 = evalin('base', 'vTX');
-            Receive  = evalin('base', 'vRcv');
-% %             P        = evalin('base', 'P');
-            % MF       = evalin('base', 'MF');
-% %             H        = evalin('base', 'H');
-            % FSA      = evalin('base', 'FSA');
-
-
-% %             % Reshape structs as needed
-% %             TX = TX(P.numRays + (1:8*H.numTx)); % keep only hadamard TXs
-% % 
-% %             Receive = Receive(P.numRays*Resource.RcvBuffer(1).numFrames ...
-% %                 + (1:8*H.numTx*Resource.RcvBuffer(2).numFrames)); % keep only hadamrd RXs
-
-            % add as params
-% %             P = rmfield(P,'txFocus'); P = rmfield(P,'numRays'); 
-% %             P.numTx = H.numTx; P.txEncodingMatrix = H.txEncodingMatrix;
-
-            % the specialized 'com.verasonics.viewer.ui.VantageWindow' type in
-            % Resource.DisplayWindow.figureHandle causes issues - clear all of it
-            Resource = rmfield(Resource, 'DisplayWindow'); 
-
-            disp('Saving RF data...')
-            save('-v7.3', '-nocompression', [full_path, '/RF_DATA_L7_4' datestr(now,'yyyymmdd_HHMMSS') '.mat'],...
-                'Resource','TW','TX','Receive','RcvData'); % maybe save as .dat file?
-                ... 'RcvData'); warning('Saving the channel data only!')
-            disp('RF data saved!')
-        
-            % clear rcvbuf
-        end
-        return
-    end
-    
+     
     % restore warning state
     warning(warning_state);
 
