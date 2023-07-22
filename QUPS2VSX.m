@@ -317,8 +317,7 @@ vUI = VSXUI();
 vUI.Control =  {'UserB1','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', @doRFDataStore};
 
 %% Block
-vBlock = VSXBlock();
-vBlock.vsxevent = vEvent;
+vBlock = VSXBlock('vsxevent', vEvent);
 
 %% added External Functions/Callback
 % restore warning state

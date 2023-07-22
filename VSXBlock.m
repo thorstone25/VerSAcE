@@ -3,8 +3,14 @@ classdef VSXBlock < matlab.mixin.Copyable
         vsxevent (1,:) VSXEvent
     end
     methods
+        function obj = VSXBlock(kwargs)
+            arguments, kwargs.?VSXBlock, end
+            for f = string(fieldnames(kwargs))'
+                obj.(f) = kwargs.(f);
+            end
+        end
         function vStruct = link(self, vResource, vPData, vUI)
-        arguments
+            arguments
             self VSXBlock
             vResource (1,1) VSXResource = VSXResource(); % default resource
             vPData VSXPData = VSXPData.empty
@@ -176,6 +182,15 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % convert some logicals to double
             [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
+            
+            % clear nan values from TX struct
+            for i = 1:numel(vStruct.TX)
+                for f = ["focus", "Steer", "FocalPt"]
+                    if any(isnan(vStruct.TX(i).(f)))
+                        vStruct.TX(i).(f) = []; % replace with empty
+                    end
+                end
+            end
             
             % restore warning state
             warning(warning_state);
