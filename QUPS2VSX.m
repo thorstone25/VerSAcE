@@ -1,4 +1,4 @@
-function [vBlock, vPData, vTrans, vUI, t0, vTW, vTX, vRcv, vRecon, display_image_process, vTGC, vReconInfo] = QUPS2VSX(us, xdc, vResource, kwargs)
+function [vBlock, vPData, vTrans, vUI, t0] = QUPS2VSX(us, xdc, vResource, kwargs)
 % QUPS2VSX - Verasonics structure converter
 %
 % [vBlock, vPData, vTrans] = QUPS2VSX(us) converts the UltrasoundSystem us
@@ -21,7 +21,7 @@ arguments
     vResource (1,1) VSXResource = VSXResource()
     kwargs.units (1,1) string {mustBeMember(kwargs.units, ["mm", "wavelengths"])} = "mm"
     kwargs.vTW (1,1) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 1, 1]); %-
-    kwargs.vTGC (1,1) VSXTGC = VSXTGC('CntrlPts', [0,297,424,515,627,764,871,1000],...
+    kwargs.vTGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC('CntrlPts', [0,297,424,515,627,764,871,1000],...
         'rangeMax', hypot(us.scan.zb(2), us.scan.xb(2)) ./ us.lambda); %-
     kwargs.frames (1,1) {mustBeInteger, mustBePositive} = 1;
 end
@@ -29,12 +29,10 @@ end
 % squash obj to struct warning
 warning_state = warning('off', 'MATLAB:structOnObject');
 
-%% Handle inputs
-F = kwargs.frames;
-
 %% Trans
 % set sound speed
 c0 = us.seq.c0;
+vResource.Parameters.speedOfSound = c0;
 
 if isa(xdc, 'string') % interpret as name
     vTrans.name = char(xdc);
@@ -69,8 +67,8 @@ elseif isa(xdc, "Transducer") % make custom
         strip('elevationApertureMm'), us.xdc.height * 1e3 ...
         );
     switch xdctype
-        case {0, 2, 4}, vTrans.spacing = us.xdc.pitch ./ lambda;
-        case {1}, vTrans.radius = us.xdc.radius ./ lambda;
+        case {0, 2, 4}, vTrans.spacing = us.xdc.pitch  ./ lambda;
+        case {1},       vTrans.radius  = us.xdc.radius ./ lambda;
     end
 else
     error("Unrecognized input for xdc.")
@@ -87,16 +85,14 @@ assert(isa(us.scan, 'ScanCartesian')); % should be ScanCartesian
 scan = scale(us.scan, 'dist', 1./lambda);
 
 % get temporal sampling region
-dnear = 2 * scan.zb(1); % nearest distance (2-way)
-dfar  = 2 * hypot(range(scan.xb), scan.zb(end)); % furthest distance (2-way)
+dnear = floor(2 * scan.zb(1)); % nearest distance (2-way)
+dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-way)
 
 %% PData
 vPData = VSXPData();
 % vPData.PDelta = [0.5, 0, 0.5];
 vPData.PDelta = [scan.dx, 0, scan.dz];
-vPData.Size(1) = scan.nz; %-
-vPData.Size(2) = scan.nx; %-
-vPData.Size(3) = scan.ny; %-
+vPData.Size = [scan.nz, scan.nx, scan.ny]; %-
 vPData.Origin = [scan.xb(1), scan.yb(1), scan.zb(1)];
 
 % TODO: compute pixel regions
@@ -108,7 +104,7 @@ vDisplayWindow.Title = 'L11-5vFlashAngles';
 vDisplayWindow.pdelta = scan.dx; % 0.35;
 vDisplayWindow.Position = [250, 89.5, scan.nx, scan.nz];
 vDisplayWindow.ReferencePt = [vPData(1).Origin(1),0,vPData(1).Origin(3)];   % 2D imaging is in the X,Z plane
-vDisplayWindow.numFrames = F;
+vDisplayWindow.numFrames = kwargs.frames;
 vDisplayWindow.AxesUnits = 'mm';
 vDisplayWindow.Colormap = gray(256);
 vResource.DisplayWindow(end+1) = vDisplayWindow;
@@ -127,31 +123,28 @@ bufLen = 256 * ceil((dfar - dnear) * spw / 256); % only modulus 256 sample buffe
 T = bufLen;
 
 % make new buffers
-vbuf_inter = VSXInterBuffer('numFrames', F);
-vbuf_im = VSXImageBuffer('numFrames', F);
-vbuf_rx   = VSXRcvBuffer('rowsPerFrame', T * us.seq.numPulse,...  %-
-    'colsPerFrame', vResource.Parameters.numRcvChannels,...
-    'numFrames', F);
+vbuf_inter = VSXInterBuffer('numFrames', kwargs.frames);
+vbuf_im    = VSXImageBuffer('numFrames', kwargs.frames);
+vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
+    'rowsPerFrame', T * us.seq.numPulse,...  %-
+    'colsPerFrame', vResource.Parameters.numRcvChannels...
+    );
+
+% add buffers to the resources
 vResource.InterBuffer(end+1) = vbuf_inter;
 vResource.ImageBuffer(end+1) = vbuf_im;
 vResource.RcvBuffer(end+1)   = vbuf_rx;
 
-% set other resource params
-vResource.Parameters.speedOfSound = c0;
-vResource.Parameters.verbose = 2; % default verbosity
-
-
 %% TW
-vTW = kwargs.vTW;
+% vTW = kwargs.vTW;
 
 %% TX
-vTX = copy(repmat(VSXTX(), [1, us.seq.numPulse]));
-[vTX.waveform] = deal(vTW);
+vTX = copy(repmat(VSXTX('waveform', kwargs.vTW), [1, us.seq.numPulse]));
 
 % get delay and apodization matrices
-delay  = - us.seq.delays(us.xdc) * us.xdc.fc;
-apod = us.seq.apodization(us.xdc);
-t0 = min(delay, [], 1); % min over elements
+delay = - us.seq.delays(us.xdc) * us.xdc.fc;
+apod  = us.seq.apodization(us.xdc);
+t0    = min(delay, [], 1); % min over elements
 delay = delay - t0;
 
 % - Set event specific TX attributes.
@@ -182,26 +175,21 @@ for i = 1:us.seq.numPulse
 end
 
 %% TGC
-vTGC = kwargs.vTGC;
-vTGC.Waveform = computeTGCWaveform(vTGC, 1e6*vTrans.frequency);
+kwargs.vTGC.Waveform = computeTGCWaveform(kwargs.vTGC, 1e6*vTrans.frequency);
 
 %% Rcv
-vRcv = VSXReceive();
-%     vRcv.aperture = 1;
-vRcv.Apod = ones(1, [vResource.Parameters.numRcvChannels]);
-vRcv.startDepth = floor(dnear); %% 2
-vRcv.endDepth = ceil(dfar); %% 256
-vRcv.TGC = kwargs.vTGC(1);
-vRcv.bufnum = vResource.RcvBuffer;
-vRcv.framenum = 1;
-vRcv.acqNum = 1;
-vRcv.callMediaFunc = 0;
+% default
+vRcv = VSXReceive('startDepth', dnear, 'endDepth', dfar, 'bufnum', vbuf_rx);
+vRcv.Apod = ones([1, vResource.Parameters.numRcvChannels]);
+vRcv.TGC = kwargs.vTGC;
 
+% replicate
 vRcv = copy(repmat(vRcv,[us.seq.numPulse, kwargs.frames]));
 
-vRcv(1).callMediaFunc = 1; %%
 % - Set event specific Receive attributes.
-for i = 1:vResource.RcvBuffer(1).numFrames
+for i = 1:kwargs.frames
+    % move points before (or after?) first receive of the frame
+    vRcv(1,i).callMediaFunc = true;
     for j = 1:us.seq.numPulse
         vRcv(j,i).framenum = i;
         vRcv(j,i).acqNum = j;
@@ -221,7 +209,7 @@ vRecon.ImgBufDestFrm = -1;
 %}
 
 % Define ReconInfo structures.
-% We need na ReconInfo structures for na steering angles.
+% We need 1 ReconInfo structures for each transmit
 vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), [1,us.seq.numPulse]));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.

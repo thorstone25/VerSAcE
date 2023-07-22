@@ -12,9 +12,7 @@ classdef VSXInterBuffer < matlab.mixin.Copyable
     
     methods
         function obj = VSXInterBuffer(kwargs)
-            arguments
-                kwargs.?VSXInterBuffer
-            end
+            arguments, kwargs.?VSXInterBuffer, end
             for f = string(fieldnames(kwargs))'
                 obj.(f) = kwargs.(f);
             end

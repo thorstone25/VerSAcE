@@ -6,7 +6,7 @@ classdef VSXReceive < matlab.mixin.Copyable
         endDepth (1,1) double
         TGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC.empty
         bufnum (1,:) VSXRcvBuffer
-        framenum (1,1) double
+        framenum (1,1) double = 1
         acqNum (1,1) double
         sampleMode (1,1) string {mustBeMember(sampleMode,["NS200BW","NS200BWI","BS100BW","BS67BW","BS50BW","custom"])} = "NS200BW"
         mode (1,1) double = 0
