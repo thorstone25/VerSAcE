@@ -10,14 +10,14 @@ function [vBlock, vPData, vTrans, vUI, t0, vTW, vTX, vRcv, vRecon, display_image
 % xdc and the `computeTrans` utility to generate the transducer struct.
 % If xdc is a struct, it is assumed to be the verasonics Trans struct and
 % the `computeTrans` utility is used to complete the definition.
-% If xdc is empty, a custom transducer definition is generated. The default
-% is string.emtpy.
+% If xdc is a Transducer, a custom transducer definition is generated. The 
+% default is us.xdc.
 %
 % [...] = QUPS2VSX(us, xdc_name, vResource) uses the VSXResource vResource
 % instead of creating a new VSXResource. You must specify this if
 arguments
     us (1,1) UltrasoundSystem
-    xdc {mustBeScalarOrEmpty, mustBeA(xdc, ["string", "struct"])} = string.empty % transducer name
+    xdc (1,1) {mustBeA(xdc, ["string", "struct", "Transducer"])} = us.xdc % transducer name
     vResource (1,1) VSXResource = VSXResource()
     kwargs.units (1,1) string {mustBeMember(kwargs.units, ["mm", "wavelengths"])} = "mm"
     kwargs.vTW (1,1) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 1, 1]); %-
@@ -33,33 +33,53 @@ warning_state = warning('off', 'MATLAB:structOnObject');
 F = kwargs.frames;
 
 %% Trans
-if isscalar(xdc)
-    if isa(xdc, 'string') % interpret as name
-        vTrans.name = char(xdc);
-        vTrans.units = char(kwargs.units);
-    elseif isa(xdc, 'struct') % interpret as Trans
-        vTrans = xdc;
-    else
-        error("Unrecognized input for xdc.");
-    end
-elseif isempty(xdc) % make custom
+% set sound speed
+c0 = us.seq.c0;
+
+if isa(xdc, 'string') % interpret as name
+    vTrans.name = char(xdc);
+    vTrans.units = char(kwargs.units);
+elseif isa(xdc, 'struct') % interpret as the Trans struct
+    vTrans = xdc;
+elseif isa(xdc, "Transducer") % make custom
     warning("Untested.");
-    vTrans.spacing          = us.xdc.pitch;
-    vTrans.Bandwidth        = us.xdc.bw;
-    vTrans.elementWidth     = us.xdc.width;
-    vTrans.elementHeight    = us.xdc.height;
-    vTrans.numelements      = us.xdc.numel;
-    vTrans.frequency        = us.xdc.fc;
-    vTrans.elevationFocusMm = us.xdc.el_focus;
+    if     isa(xdc, 'TransducerArray'),     xdctype = 0;
+    elseif isa(xdc, 'TransducerConvex'),    xdctype = 1;
+    elseif isa(xdc, 'TransducerMatrix'),    xdctype = 2;
+    else,                                   xdctype = 2;
+        % treat all others as matrix, since it is the most flexible
+    end
+    imp = copy(us.xdc.impulse);
+    imp.fs = 250e6; % sample at 250MHz
+    [th, phi] = orientations(xdc); % element orientations (deg)
+    pn = positions(xdc); % element positions (m)
+    lambda = c0 ./ xdc.fc; % wavelength
+    vTrans = struct( ...
+        strip('name            '), "custom", ...
+        strip('units           '), kwargs.units, ...
+        strip('frequency       '), us.xdc.fc / 1e6, ...
+        strip('Bandwidth       '), us.xdc.bw / 1e6, ...
+        strip('type            '), xdctype, ...
+        strip('numelements     '), us.xdc.numel, ...
+        strip('ElementPos      '), [pn * 1e3; deg2rad(th); deg2rad(phi)]', ...
+        strip('elementWidth    '), us.xdc.width, ...
+        strip('IR1wy           '), wv.samples, ...
+        strip('connType        '), -1, ... -1 specifies a UTA compatible connecter
+        strip('elevationFocusMm'), us.xdc.el_focus * 1e3, ...
+        strip('elevationApertureMm'), us.xdc.height * 1e3 ...
+        );
+    switch xdctype
+        case {0, 2, 4}, vTrans.spacing = us.xdc.pitch ./ lambda;
+        case {1}, vTrans.radius = us.xdc.radius ./ lambda;
+    end
 else
     error("Unrecognized input for xdc.")
 end
 
-% compute structure
+% have VSX compute remaining properties
 vTrans = computeTrans(vTrans);
 
 % set global params
-c0 = us.seq.c0;
 lambda = c0 / (1e6*vTrans.frequency); % wavelengths
 
 % get the scan region in units of wavelengths so we know the ROI
