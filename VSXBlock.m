@@ -6,14 +6,13 @@ classdef VSXBlock < matlab.mixin.Copyable
         function vStruct = link(self, vResource, vPData, vUI)
         arguments
             self VSXBlock
-            vResource
-            vPData
+            vResource (1,1) VSXResource
+            vPData VSXPData
             vUI VSXUI = VSXUI.empty
         end
             
             % squash obj to struct warning
             warning_state = warning('off', 'MATLAB:structOnObject');
-            
 
             %% convert string to char
  %{
@@ -61,48 +60,46 @@ classdef VSXBlock < matlab.mixin.Copyable
             end
 %}
             %% get arrays of all properties
-            vEvent              = self.vsxevent; % all events
-            vTx                 = unique([vEvent.tx]); % array of all transmits
-            vRcv                = unique([vEvent.rcv]);
-            vRecon              = unique([vEvent.recon]);
-            vReconInfo          = unique([vRecon.RINums]);
-            vProcess            = unique([vEvent.process]);
-            vSeqControl         = unique([vEvent.seqControl]);
-            vTw                 = unique([vTx.waveform]);
-            vTGC                = unique([vRcv.TGC]);
+            vEvent              = unique([self.vsxevent]    , 'stable'); % all events
+            vTx                 = unique([vEvent.tx]        , 'stable'); 
+            vRcv                = unique([vEvent.rcv]       , 'stable');
+            vRecon              = unique([vEvent.recon]     , 'stable');
+            vReconInfo          = unique([vRecon.RINums]    , 'stable');
+            vProcess            = unique([vEvent.process]   , 'stable');
+            vSeqControl         = unique([vEvent.seqControl], 'stable');
+            vTw                 = unique([vTx.waveform]     , 'stable');
+            vTGC                = unique([vRcv.TGC]         , 'stable');
             
             % is this necessary?
-            vDisplayWindow = unique([vResource.DisplayWindow]);
-            vRcvBuffer     = unique([vResource.RcvBuffer    ]);
-            vInterBuffer   = unique([vResource.InterBuffer  ]);
-            vImageBuffer   = unique([vResource.ImageBuffer  ]);
-            vParameters    = unique([vResource.Parameters   ]);
+            vDisplayWindow = unique([vResource.DisplayWindow], 'stable');
+            vRcvBuffer     = unique([vResource.RcvBuffer    ], 'stable');
+            vInterBuffer   = unique([vResource.InterBuffer  ], 'stable');
+            vImageBuffer   = unique([vResource.ImageBuffer  ], 'stable');
+            vParameters    = unique([vResource.Parameters   ], 'stable');
             
             %% convert to Verasonics definition
             % convert to structs
-            Event = arrayfun(@struct, vEvent);
-            TX = arrayfun(@struct, vTx);
-            Receive = arrayfun(@struct, vRcv);
-            Recon = arrayfun(@struct, vRecon);
-            ReconInfo = arrayfun(@struct, vReconInfo);
-            Process = arrayfun(@struct, vProcess);
-            SeqControl = arrayfun(@struct, vSeqControl);     
-            TW = arrayfun(@struct, vTw);
-            Resource = arrayfun(@struct, vResource);
-            PData = arrayfun(@struct, vPData);
+            Event       = arrayfun(@struct, vEvent);
+            TX          = arrayfun(@struct, vTx);
+            Receive     = arrayfun(@struct, vRcv);
+            Recon       = arrayfun(@struct, vRecon);
+            ReconInfo   = arrayfun(@struct, vReconInfo);
+            Process     = arrayfun(@struct, vProcess);
+            SeqControl  = arrayfun(@struct, vSeqControl);     
+            TW          = arrayfun(@struct, vTw);
+            Resource    = arrayfun(@struct, vResource);
+            PData       = arrayfun(@struct, vPData);
+            TGC         = arrayfun(@struct, vTGC);
+            UI          = arrayfun(@struct, vUI);
             
             % 
-            Resource.DisplayWindow = arrayfun(@struct, vDisplayWindow);
-            Resource.RcvBuffer = arrayfun(@struct, vRcvBuffer);
-            Resource.InterBuffer = arrayfun(@struct, vInterBuffer);
-            Resource.ImageBuffer = arrayfun(@struct, vImageBuffer);
-            Resource.Parameters = arrayfun(@struct, vParameters);
+            Resource.DisplayWindow  = arrayfun(@struct, vDisplayWindow);
+            Resource.RcvBuffer      = arrayfun(@struct, vRcvBuffer);
+            Resource.InterBuffer    = arrayfun(@struct, vInterBuffer);
+            Resource.ImageBuffer    = arrayfun(@struct, vImageBuffer);
+            Resource.Parameters     = arrayfun(@struct, vParameters);            
             
-            
-            TGC = arrayfun(@struct, vTGC);
-            UI = arrayfun(@struct, vUI);
-            
-            % remove TX.aperture property is unneeded / unspecified
+            % remove TX.aperture property if unneeded / unspecified
             if all(cellfun(@isempty, {TX.aperture}))
                 TX = rmfield(TX, 'aperture'); 
             end
@@ -114,10 +111,10 @@ classdef VSXBlock < matlab.mixin.Copyable
             % assign indices for Event
             for i = 1:numel(Event)
                 % find indices and set empty indices to 0
-                Event(i).tx = safeIsMember([vEvent(i).tx], vTx);
-                Event(i).rcv = safeIsMember([vEvent(i).rcv], vRcv);
-                Event(i).recon = safeIsMember([vEvent(i).recon], vRecon);
-                Event(i).process = safeIsMember([vEvent(i).process], vProcess);
+                Event(i).tx         = safeIsMember([vEvent(i).tx]        , vTx);
+                Event(i).rcv        = safeIsMember([vEvent(i).rcv]       , vRcv);
+                Event(i).recon      = safeIsMember([vEvent(i).recon]     , vRecon);
+                Event(i).process    = safeIsMember([vEvent(i).process]   , vProcess);
                 Event(i).seqControl = safeIsMember([vEvent(i).seqControl], vSeqControl);
             end
             
@@ -129,7 +126,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             % assign indices for Receive
             for i = 1 : numel(Receive)
                 Receive(i).bufnum = safeIsMember([vRcv(i).bufnum], vRcvBuffer);
-                Receive(i).TGC = safeIsMember([vRcv(i).TGC], vTGC);
+                Receive(i).TGC    = safeIsMember([vRcv(i).TGC   ], vTGC);
             end
             
             % assign indices for Recon
@@ -148,14 +145,19 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % ----seqcontrol
             for i = 1:numel(SeqControl)
+                % link the index for jump commands
                 if SeqControl(i).command == "jump"
                    SeqControl(i).argument = safeIsMember([SeqControl(i).argument], vEvent);  
                 end
+                
+                % 0 arguments -> empty TODO: use nan to mark empty arguments
                 if SeqControl(i).argument == 0
                     SeqControl(i).argument = [];
                 end
             end
             
+
+            % convert to a single struct
             nms  = {'Event', 'TX', 'Receive', 'Recon', 'ReconInfo', 'Process', 'SeqControl', 'TW', 'Resource', 'PData', 'TGC', 'UI'};
             vals = {Event, TX, Receive, Recon, ReconInfo, Process, SeqControl, TW, Resource, PData, TGC, UI};
             args = [nms; vals];
