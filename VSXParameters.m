@@ -6,7 +6,7 @@ classdef VSXParameters < matlab.mixin.Copyable
         speedOfSound (1,1) double = 1540
 % %         speedCorrectionFactor (1,1) double = 1.0
         % startEvent (1,1) double = 1
-        verbose (1,1) double {mustBeLessThanOrEqual(verbose,3)}
+        verbose (1,1) double {mustBeLessThanOrEqual(verbose,3)} = 2
         initializeOnly (1,1) double = 0
         simulateMode (1,1) double = 0
         % waitForProcessing (1,1) double

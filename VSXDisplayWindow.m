@@ -1,10 +1,10 @@
 classdef VSXDisplayWindow < matlab.mixin.Copyable
     properties
-        Type (1,:) char = 'Verasonics' %{mustBeMember(Type,["Verasonics", "Matlab"])} = "Verasonics"
-        Title (1,:) char = 'Window title'
+        Type (1,1) string {mustBeMember(Type,["Verasonics", "Matlab"])} = "Verasonics"
+        Title (1,1) string = 'Window title'
 % %         mode (1,:) char = '2d'
 % %         Orientation (1,:) char = 'xz' %{mustBeMember(Orientation,["xz","yz","xy"])}="xz"
-        AxesUnits (1,:) char = 'wavelengths'  %{mustBeMember(AxesUnits,["wavelengths","mm"])}="wavelengths"
+        AxesUnits (1,1) string {mustBeMember(AxesUnits,["wavelengths","mm"])}="wavelengths"
         Position (1,:) double = [1 1 512 512]
         ReferencePt (1,3) double
         pdelta (1,1) double = 0.25

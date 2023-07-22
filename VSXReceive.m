@@ -8,9 +8,9 @@ classdef VSXReceive < matlab.mixin.Copyable
         bufnum (1,:) VSXRcvBuffer
         framenum (1,1) double
         acqNum (1,1) double
-        sampleMode (1,:) char = 'NS200BW'; %{mustBeMember(sampleMode,["NS200BW","NS200BW(I)","BS100BW","BS67BW","BS50BW","custom"])} = "NS200BW(I)"
+        sampleMode (1,1) string {mustBeMember(sampleMode,["NS200BW","NS200BWI","BS100BW","BS67BW","BS50BW","custom"])} = "NS200BW"
         mode (1,1) double = 0
-        callMediaFunc (1,1) double = 1
+        callMediaFunc (1,1) logical = false
     end
     methods
         function obj = VSXReceive(kwargs)
