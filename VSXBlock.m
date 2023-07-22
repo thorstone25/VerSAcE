@@ -155,6 +155,25 @@ classdef VSXBlock < matlab.mixin.Copyable
                     SeqControl(i).argument = [];
                 end
             end
+
+            % Parse Process arguments
+            for i = 1:numel(Process)
+                % link any referenced buffers or display windows 
+                for f = ["displayWindow", "pdatanum", "imgbufnum", "srcbufnum"]
+                    % get teh corresponding property
+                    switch f
+                        case "displayWindow", arr = vDisplayWindow;
+                        case "pdatanum"     , arr = vPData;
+                        case "imgbufnum"    , arr = vImageBuffer;
+                        case "srcbufnum"    , arr = vRcvBuffer;
+                    end
+                    % get argument index
+                    j = 2*find(f == string(Process(i).Parameters(1:2:end)));
+
+                    % link
+                    if ~isempty(j), Process(i).Parameters{j} = safeIsMember(Process(i).Parameters{j}, arr); end
+                end
+            end
             
 
             % convert to a single struct
