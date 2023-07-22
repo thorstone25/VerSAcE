@@ -298,25 +298,13 @@ function [vBlock, vTrans, vPData, vTW, vTX, vRcv, vRecon, display_image_process,
    
     %% ADDED UI
     vUI = VSXUI();
-    vUI.Control =  {'UserB1','Style','VsToggleButton','Label','SAVE RFData', 'Callback', @RFDataStore};
+    vUI.Control =  {'UserB1','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', @doRFDataStore};
     
     %% Block
     vBlock = VSXBlock();
     vBlock.vsxevent = vEvent;
-    % vblocks = vBlock1;
-    
-    return
-    
-    %% added External Functions/Callback
-
-    %SAVERFDataCallback
-    if UIState
-        toggle = true;
-    else
-        toggle = false;
-    end
-    %SAVERFDataCallback
-     
+        
+    %% added External Functions/Callback 
     % restore warning state
     warning(warning_state);
 
