@@ -158,20 +158,41 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % Parse Process arguments
             for i = 1:numel(Process)
-                % link any referenced buffers or display windows 
-                for f = ["displayWindow", "pdatanum", "imgbufnum", "srcbufnum"]
-                    % get teh corresponding property
-                    switch f
-                        case "displayWindow", arr = vDisplayWindow;
-                        case "pdatanum"     , arr = vPData;
-                        case "imgbufnum"    , arr = vImageBuffer;
-                        case "srcbufnum"    , arr = vRcvBuffer;
-                    end
-                    % get argument index
-                    j = 2*find(f == string(Process(i).Parameters(1:2:end)));
+                % turn the params into a struct for easier processing
+                prms = struct(Process(i).Parameters{:});
+                
+                % for all referenced buffers or display windows
+                for f = ["displayWindow", "pdatanum", "imgbufnum", "srcbufnum", "dstbufnum"]
+                    % if it's specified
+                    if isfield(prms, f)
+                        % get the corresponding property
+                        switch f
+                            case "displayWindow", arr = vDisplayWindow;
+                            case "pdatanum"     , arr = vPData;
+                            case "imgbufnum"    , arr = vImageBuffer;
+                            case {"srcbufnum", "dstbufnum"}
+                                % get the property name of the type of buffer
+                                if     f == "srcbufnum", sb = "srcbuffer";
+                                elseif f == "dstbufnum", sb = "dstbuffer";
+                                else, error("Unrecognized buffer type.");
+                                end
 
-                    % link
-                    if ~isempty(j), Process(i).Parameters{j} = safeIsMember(Process(i).Parameters{j}, arr); end
+                                % get the type of buffer
+                                switch prms.(sb)
+                                    case "receive",             arr = vRcvBuffer;
+                                    case "inter",               arr = vInterBuffer;
+                                    case {'image', 'imageP'},   arr = vImageBuffer;
+                                    case 'none',                continue;
+                                    otherwise
+                                        error("Unrecognized " + sb + " value for Process " + i + " of class " + Process(i).classname + ".");
+                                end
+                        end
+                        % get argument index
+                        j = 2*find(f == string(Process(i).Parameters(1:2:end)));
+
+                        % link
+                        if ~isempty(j), Process(i).Parameters{j} = safeIsMember(Process(i).Parameters{j}, arr); end
+                    end
                 end
             end
             
