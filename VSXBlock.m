@@ -86,8 +86,14 @@ classdef VSXBlock < matlab.mixin.Copyable
             
             % assign indices for Recon
             for i = 1 : numel(Recon)
-                Recon(i).RINums = safeIsMember([vRecon(i).RINums], vReconInfo); 
+                Recon(i).RINums   = safeIsMember([vRecon(i).RINums], vReconInfo);
+                Recon(i).pdatanum = safeIsMember([vRecon(i).pdatanum], vPData);
+                Recon(i).IntBufDest = [safeIsMember([vRecon(i).IntBufDest], vInterBuffer), vRecon(i).IntBufDestFrm];
+                Recon(i).ImgBufDest = [safeIsMember([vRecon(i).ImgBufDest], vImageBuffer), vRecon(i).ImgBufDestFrm];
             end
+
+            % remove extra *Frm argument
+            Recon = rmfield(Recon, ["IntBufDestFrm", "ImgBufDestFrm"]);
             
             % checking UI for empty values
             for i = 1 : numel(UI)

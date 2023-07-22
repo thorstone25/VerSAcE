@@ -1,10 +1,12 @@
 classdef VSXRecon < matlab.mixin.Copyable
     properties
-        senscutoff (1,1) double
-        pdatanum (1,1) double
-        rcvBufFrame (1,1) double
-        IntBufDest (1,2) double
-        ImgBufDest (1,2) double 
+        senscutoff (1,1) double = 0.6
+        pdatanum (1,1) VSXPData
+        rcvBufFrame (1,1) double = -1
+        IntBufDest (1,1) VSXInterBuffer
+        IntBufDestFrm (1,1) double = 1
+        ImgBufDest (1,1) VSXImageBuffer
+        ImgBufDestFrm (1,1) double = -1
         RINums (1,:) VSXReconInfo
     end
     methods

@@ -210,34 +210,35 @@ for i = 1:vResource.RcvBuffer(1).numFrames
 end
 
 %% Recon
-vRecon = VSXRecon();
+vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vbuf_im);
+%{
 vRecon.senscutoff = 0.6;
-vRecon.pdatanum = length(vPData);
+vRecon.pdatanum = vPData;
 vRecon.rcvBufFrame = -1;
-vRecon.IntBufDest = [1, 1];
-vRecon.ImgBufDest = [1,-1];
+vRecon.IntBufDest = vbuf_inter;
+vRecon.IntBufDestFrm = 1;
+vRecon.ImgBufDest = vbuf_im;
+vRecon.ImgBufDestFrm = -1;
+%}
 
 % Define ReconInfo structures.
 % We need na ReconInfo structures for na steering angles.
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ', ...  % default is to accumulate IQ data.
-    'txnum', 1, ...
-    'rcvnum', 1, ...
-    'regionnum', 1), ...
-    [1, us.seq.numPulse]));
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), [1,us.seq.numPulse]));  % default is to accumulate IQ data.
+
 % - Set specific ReconInfo attributes.
-if us.seq.numPulse > 1
+if us.seq.numPulse <= 1
+    vReconInfo(1).mode = 'replaceIntensity';
+else
     vReconInfo(1).mode = 'replaceIQ'; % replace IQ data
     for j = 1:us.seq.numPulse  % For each row in the column
-        vReconInfo(j).txnum = j;
-        vReconInfo(j).rcvnum = j;
+        vReconInfo(j).txnum = vTX(j);
+        vReconInfo(j).rcvnum = vRcv(j);
     end
     vReconInfo(us.seq.numPulse).mode = 'accumIQ_replaceIntensity'; % accum and detect
-else
-    vReconInfo(1).mode = 'replaceIntensity';
 end
 
 % associate the reconinfo
-vRecon.RINums = vReconInfo; %%
+vRecon.RINums = vReconInfo;
 
 %% Process
 display_image_process = VSXProcess();
