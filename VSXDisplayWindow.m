@@ -8,7 +8,7 @@ classdef VSXDisplayWindow < matlab.mixin.Copyable
         Position (1,:) double = [1 1 512 512]
         ReferencePt (1,3) double
         pdelta (1,1) double = 0.25
-        Colormap (256,3) double = "grey"
+        Colormap (256,3) double = gray(256)
         numFrames (1,1) double = 1
 % %         firstFrame (1,1) double 
 % %         lastFrame (1,1) double
