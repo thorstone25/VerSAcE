@@ -241,13 +241,11 @@ end
 vRecon.RINums = vReconInfo;
 
 %% Process
-display_image_process = VSXProcess();
-display_image_process.classname = 'Image';
-display_image_process.method = 'imageDisplay';
+display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
 display_image_process.Parameters = {
     'imgbufnum', vbuf_im,...   % number of buffer to process.
     'framenum',-1,...   % (-1 => lastFrame)
-    'pdatanum', vPData,...    % number of PData structure to use v%TODO: handle in linking stage.
+    'pdatanum', vPData,...    % PData structure to use
     'pgain',1.0,...            % pgain is image processing gain
     'reject',2,...      % reject level
     'persistMethod','simple',...
@@ -263,9 +261,7 @@ display_image_process.Parameters = {
     'displayWindow', vDisplayWindow, ...
     }; 
 
-save_rf_data = VSXProcess();
-save_rf_data.classname = 'External';
-save_rf_data.method = 'RFDataStore';
+save_rf_data = VSXProcess('classname', 'External', 'method', 'RFDataStore');
 save_rf_data.Parameters = {
     'srcbuffer','receive',...
     'srcbufnum', vbuf_rx,... 
