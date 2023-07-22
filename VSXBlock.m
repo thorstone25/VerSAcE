@@ -6,59 +6,14 @@ classdef VSXBlock < matlab.mixin.Copyable
         function vStruct = link(self, vResource, vPData, vUI)
         arguments
             self VSXBlock
-            vResource (1,1) VSXResource
-            vPData VSXPData
+            vResource (1,1) VSXResource = VSXResource(); % default resource
+            vPData VSXPData = VSXPData.empty
             vUI VSXUI = VSXUI.empty
         end
             
             % squash obj to struct warning
             warning_state = warning('off', 'MATLAB:structOnObject');
 
-            %% convert string to char
- %{
-           for i = 1:numel(Event)
-                for f1 = string(fieldnames(Event))'
-                    for f2 = string(fieldnames(Event.(f1)))'
-                        Event(i).(f1).(f2) = stringToChar(Event(i).(f1).(f2));
-                    end
-                end
-            end
-            for i = 1:numel(vPData)
-                for f = string(fieldnames(vPData))'
-                    vPData(i).(f)= stringToChar(vPData(i).(f));
-                end
-            end
-            for i = 1:numel(vDisplayWindow)
-                for f = string(fieldnames(vDisplayWindow))'
-                    vDisplayWindow(i).(f)= stringToChar(vDisplayWindow(i).(f));
-                end
-            end
-            for i = 1:numel(vRcvBuffer)
-                for f = string(fieldnames(vRcvBuffer))'
-                    vRcvBuffer(i).(f)= stringToChar(vRcvBuffer(i).(f));
-                end
-            end
-            for i = 1:numel(vInterBuffer)
-                for f = string(fieldnames(vInterBuffer))'
-                    vInterBuffer(i).(f)= stringToChar(vInterBuffer(i).(f));
-                end
-            end
-            for i = 1:numel(vImageBuffer)
-                for f = string(fieldnames(vImageBuffer))'
-                    vImageBuffer(i).(f)= stringToChar(vImageBuffer(i).(f));
-                end
-            end
-            for i = 1:numel(vParameters)
-                for f = string(fieldnames(vParameters))'
-                    vParameters(i).(f)= stringToChar(vParameters(i).(f));
-                end
-            end
-            for i = 1:numel(vRcv)
-                for f = string(fieldnames(vRcv))'
-                    vRcv(i).(f)= stringToChar(vRcv(i).(f));
-                end
-            end
-%}
             %% get arrays of all properties
             vEvent              = unique([self.vsxevent]    , 'stable'); % all events
             vTx                 = unique([vEvent.tx]        , 'stable'); 
@@ -196,7 +151,7 @@ classdef VSXBlock < matlab.mixin.Copyable
                 end
             end
             
-
+            %% Casting
             % convert to a single struct
             nms  = {'Event', 'TX', 'Receive', 'Recon', 'ReconInfo', 'Process', 'SeqControl', 'TW', 'Resource', 'PData', 'TGC', 'UI'};
             vals = {Event, TX, Receive, Recon, ReconInfo, Process, SeqControl, TW, Resource, PData, TGC, UI};
@@ -209,6 +164,12 @@ classdef VSXBlock < matlab.mixin.Copyable
                     vStruct = rmfield(vStruct, f);
                 end
             end
+
+            % convert all strings to char
+            vStruct = recursiveString2Char(vStruct);
+
+            % convert some logicals to double
+            [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
             
             % restore warning state
             warning(warning_state);
@@ -224,14 +185,21 @@ function X = safeIsMember(A, B)
 end
 
 function y = recursiveString2Char(x)
-
-    if isstruct(x)
-        recursiveString2Char(x) % do recursive string2char on all props of x
-    elseif isstring(x)
-        y = char(x);
-    else
-        % do nothing
+y = x; % init
+if isstruct(x) % struct container
+    for i = 1:numel(x) % for all elements
+        for f = string(fieldnames(x))' % for all fields
+            y(i).(f) = recursiveString2Char(x(i).(f)); % do recursive string2char on all props of x
+        end
     end
-
+elseif iscell(x) % cell container
+    for i = 1:numel(x) % for all elements
+         y{i} = recursiveString2Char(x{i}); % do recursive string2char on all props of x
+    end
+elseif isstring(x)
+    y = char(x);
+else
+    % do nothing
+end
 end
 
