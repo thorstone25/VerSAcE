@@ -1,4 +1,4 @@
-function [vBlock, vPData, vTrans, vUI, t0, vTW, vTX, vRcv, vRecon, display_image_process, vSeqControl, vTGC, vReconInfo] = QUPS2VSX(us, xdc, vResource, kwargs)
+function [vBlock, vPData, vTrans, vUI, t0, vTW, vTX, vRcv, vRecon, display_image_process, vTGC, vReconInfo] = QUPS2VSX(us, xdc, vResource, kwargs)
 % QUPS2VSX - Verasonics structure converter
 %
 % [vBlock, vPData, vTrans] = QUPS2VSX(us) converts the UltrasoundSystem us
@@ -145,7 +145,6 @@ vResource.Parameters.verbose = 2; % default verbosity
 vTW = kwargs.vTW;
 
 %% TX
-vTX.Origin = [0.0,0.0,0.0]; %%
 vTX = copy(repmat(VSXTX(), [1, us.seq.numPulse]));
 [vTX.waveform] = deal(vTW);
 
@@ -198,14 +197,14 @@ vRcv.framenum = 1;
 vRcv.acqNum = 1;
 vRcv.callMediaFunc = 0;
 
-vRcv = copy(repmat(vRcv,1,us.seq.numPulse));
+vRcv = copy(repmat(vRcv,[us.seq.numPulse, kwargs.frames]));
 
 vRcv(1).callMediaFunc = 1; %%
 % - Set event specific Receive attributes.
 for i = 1:vResource.RcvBuffer(1).numFrames
     for j = 1:us.seq.numPulse
-        vRcv(j).framenum = i;
-        vRcv(j).acqNum = j;
+        vRcv(j,i).framenum = i;
+        vRcv(j,i).acqNum = j;
     end
 end
 
@@ -279,30 +278,38 @@ no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2)
 
 %% Event
 
-% loop through all events
+% loop through all events and frames
 % ---------- Events ------------- %
-vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), [1 us.seq.numPulse]));
-% vEvent = sort(vEvent);
+vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), [us.seq.numPulse, kwargs.frames]));
 
-for i = 1:us.seq.numPulse % each transmit
-    vEvent(i).info = 'Full aperture.';
-    vEvent(i).tx  = vTX(i);
-    vEvent(i).rcv = vRcv(i);
-    vEvent(i).rcv.acqNum = i;
+for f = 1:kwargs.frames
+    for i = 1:us.seq.numPulse % each transmit
+        vEvent(i,f).info = 'Full aperture.';
+        vEvent(i,f).tx  = vTX(i);
+        vEvent(i,f).rcv = vRcv(i,f);
+        vEvent(i,f).rcv.acqNum = i;
+    end
+
+    % transfer data to host using the last event
+    vEvent(i,f).seqControl = [wait_for_pulse_sequence, transfer_to_host]; % modify last acquisition vEvent's seqControl
+
+    % actions per frame go here
+    % post-processing events and return to MATLAB
+    vEvent(i+1,f) = VSXEvent(...
+        'info', 'recon and process', ...
+        'recon', vRecon, ...
+        'process', display_image_process, ...
+        'seqControl', return_to_matlab ...
+        );
 end
 
-% transfer data to host using the last event
-vEvent(i).seqControl = [wait_for_pulse_sequence, transfer_to_host]; % modify last acquisition vEvent's seqControl
+% first event 
+acq_start_evnt = vEvent(1,1);
 
-% post-processing events and return to MATLAB
-vEvent(end+1) = VSXEvent(...
-    'info', 'recon and process', ...
-    'recon', vRecon, ...
-    'process', display_image_process, ...
-    'seqControl', return_to_matlab ...
-    );
+% vectorize
+vEvent = vEvent(:);
 
-% save RF Data
+% save all RF Data
 vEvent(end+1) = VSXEvent(...
     'info', 'Save RF Data', ...
     'process', save_rf_data,...
@@ -312,10 +319,10 @@ vEvent(end+1) = VSXEvent(...
 % return to start of block
 vEvent(end+1) = VSXEvent(...
     'info', 'Jump back',...
-    'seqControl', [jump_to_image_start]);
+    'seqControl', jump_to_image_start);
 
 % ------------ Events ------------ %
-jump_to_image_start.argument = vEvent(1);
+jump_to_image_start.argument = acq_start_evnt;
 
 %% ADDED UI
 vUI = VSXUI();
