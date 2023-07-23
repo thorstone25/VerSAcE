@@ -9,7 +9,7 @@ uss.seq.c0 = c0;
 % sequences
 pf = [0;0;50e-3] + [1e-3;0;0] .* (-20 : 5 : 20);
 seqfsa = Sequence(     'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel);
-seqpw = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -15 : 5 : 15); 
+seqpw = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -25 : 5 : 25); 
 seqfc = Sequence(      'type', 'VS' , 'c0', c0, 'focus', pf);
 
 uss = copy(repmat(uss, [1,3]));
@@ -17,9 +17,19 @@ uss = copy(repmat(uss, [1,3]));
 
 %%
 vres = VSXResource();
-for i = 3:-1:1
-    [vb(i), vp(i), Trans, vu(i)] = QUPS2VSX(uss(i), "L11-5v", vres, "frames", 2);
-end
+i = 2; % just 1 selection for now
+[vb, vp, Trans, vu] = QUPS2VSX(uss(i), "L11-5v", vres, "frames", 2);
+
 vs = link(vb, vres, vp, vu);
+vs.Trans = Trans; % add Trans
+pt1; vs.Media = Media; % add simulation media
+
+% force in simulation mode for testing
+vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
+
+% save 
+filename = char(fullfile("MatFiles","qups-test.mat")); 
+save(filename, '-struct', 'vs');
+
 
 %% 
