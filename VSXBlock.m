@@ -184,11 +184,13 @@ classdef VSXBlock < matlab.mixin.Copyable
             [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
             
             % clear nan values from TX struct
-            for i = 1:numel(vStruct.TX)
-                for f = ["focus", "Steer", "FocalPt"]
-                    if any(isnan(vStruct.TX(i).(f)))
-                        vStruct.TX(i).(f) = []; % replace with empty
-                    end
+            for f = ["focus", "Steer", "FocalPt"]
+	        if isfield(vStruct.TX, f)
+                    for i = 1:numel(vStruct.TX)
+    		        if any(isnan(vStruct.TX(i).(f)))
+                            vStruct.TX(i).(f) = []; % replace with empty
+                    	end
+	    	    end
                 end
             end
             
