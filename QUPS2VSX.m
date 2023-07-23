@@ -315,6 +315,7 @@ jump_to_image_start.argument = acq_start_evnt;
 %% ADDED UI
 vUI = VSXUI();
 vUI.Control =  {'UserB1','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', @doRFDataStore};
+vUI.Callback = cellstr(["doRFDataStore(varargin)", "global toggle; toggle true; return;"]);
 
 %% Block
 vBlock = VSXBlock('vsxevent', vEvent);
