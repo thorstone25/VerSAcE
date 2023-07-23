@@ -193,18 +193,18 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % convert some logicals to double
             [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
-            
+
             % clear nan values from TX struct
             for f = ["focus", "Steer", "FocalPt"]
-	        if isfield(vStruct.TX, f)
+                if isfield(vStruct.TX, f)
                     for i = 1:numel(vStruct.TX)
-    		        if any(isnan(vStruct.TX(i).(f)))
+                        if any(isnan(vStruct.TX(i).(f)))
                             vStruct.TX(i).(f) = []; % replace with empty
-                    	end
-	    	    end
+                        end
+                    end
                 end
             end
-            
+
             % restore warning state
             warning(warning_state);
         end
