@@ -16,7 +16,7 @@ classdef VSXReconInfo < matlab.mixin.Copyable
             ])} = "replaceIQ"
         txnum (1,1) VSXTX
         rcvnum (1,1) VSXReceive
-        regionnum (1,1) 
+        regionnum {mustBeScalarOrEmpty} = [] % PData.region index -> 1 if no regions 
         
     end
     methods

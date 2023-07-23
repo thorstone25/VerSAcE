@@ -100,6 +100,17 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % remove extra *Frm argument
             Recon = rmfield(Recon, ["IntBufDestFrm", "ImgBufDestFrm"]);
+
+	    % assign indices for ReconInfo
+	    for i = 1:numel(vReconInfo)
+                ReconInfo(i).txnum  = safeIsMember([vReconInfo(i).txnum] , vTx);
+                ReconInfo(i).rcvnum = safeIsMember([vReconInfo(i).rcvnum], vRcv);
+		% TODO: add regionnum property vs. VSXRegion
+		if isempty(ReconInfo(i).regionnum)
+		    ReconInfo(i).regionnum = 1; % if no regions specified, use 1st region
+		end
+	    end
+
             
             % checking UI for empty values
             for i = 1 : numel(UI)
