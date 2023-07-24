@@ -83,7 +83,7 @@ fs_decim = fs_available(find(fs_available >= 4 * vTrans.frequency, 1, 'first'));
 
 % get the output data buffer length
 spw = fs_decim / vTrans.frequency; % samples per wave
-bufLen = 128 * ceil(2 * (dfar - dnear) * spw / 128); % only modulus 128 sample buffer length supported
+bufLen = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sample buffer length supported
 T = bufLen; % alias
 
 % make new buffers
