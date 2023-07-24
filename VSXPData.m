@@ -18,4 +18,16 @@ classdef VSXPData < matlab.mixin.Copyable
             end
         end
     end
+    methods(Static)
+        function vPData = QUPS(scan)
+	    arguments
+	        scan (1,1) ScanCartesian
+	    end
+	    vPData = VSXPData(...
+	    'PDelta', [scan.dx, 0, scan.dz],...
+	    'Size'  , [scan.nz, scan.nx, scan.ny],...
+	    'Origin', [scan.xb(1), scan.yb(1), scan.zb(1)] ...
+	    );
+        end
+    end
 end
