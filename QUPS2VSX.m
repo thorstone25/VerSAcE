@@ -1,4 +1,4 @@
-function [vBlock, vPData, vTrans, vUI, t0] = QUPS2VSX(us, xdc, vResource, kwargs)
+function [vBlock, vPData, vTrans, vUI, chd] = QUPS2VSX(us, xdc, vResource, kwargs)
 % QUPS2VSX - Verasonics structure converter
 %
 % [vBlock, vPData, vTrans] = QUPS2VSX(us) converts the UltrasoundSystem us
@@ -291,6 +291,10 @@ vUI.Callback = cellstr(["doRFDataStore(varargin)", "global toggle; toggle true; 
 
 %% Block
 vBlock = VSXBlock('vsxevent', vEvent);
+
+%% Create a template ChannelData object
+x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'int16');
+chd = ChannelData('data', x, 'fs', fs_decim, 't0', t0, 'order', 'TMNF');
 
 %% added External Functions/Callback
 % restore warning state

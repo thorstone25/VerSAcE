@@ -18,7 +18,7 @@ uss = copy(repmat(uss, [1,3]));
 %%
 vres = VSXResource();
 i = 2; % just 1 selection for now
-[vb, vp, Trans, vu] = QUPS2VSX(uss(i), "L11-5v", vres, "frames", 2);
+[vb, vp, Trans, vu, chd] = QUPS2VSX(uss(i), "L11-5v", vres, "frames", 2);
 
 vs = link(vb, vres, vp, vu);
 vs.Trans = Trans; % add Trans
