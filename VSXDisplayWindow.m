@@ -24,4 +24,19 @@ classdef VSXDisplayWindow < matlab.mixin.Copyable
             end
         end
     end
+    methods(Static)
+        function vDisplayWindow = QUPS(scan,kwargs)
+            arguments
+                scan (1,1) ScanCartesian
+		kwargs.?VSXDisplayWindow
+            end
+            args = namedargs2cell(kwargs);
+            vDisplayWindow = VSXDisplayWindow( ...
+                'ReferencePt', [scan.xb(1), scan.yb(1), scan.zb(1)], ...
+                'pdelta', scan.dx, ... 0.35
+                'Position', [1, 1, scan.nx, scan.nz], ...
+                args{:} ...
+            ); 
+        end
+    end
 end
