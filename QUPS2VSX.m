@@ -35,41 +35,11 @@ c0 = us.seq.c0;
 vResource.Parameters.speedOfSound = c0;
 
 if isa(xdc, 'string') % interpret as name
-    vTrans.name = char(xdc);
-    vTrans.units = char(kwargs.units);
+    vTrans = struct('name', char(xdc), 'units', char(kwargs.units));
 elseif isa(xdc, 'struct') % interpret as the Trans struct
     vTrans = xdc;
 elseif isa(xdc, "Transducer") % make custom
-    warning("Untested.");
-    if     isa(xdc, 'TransducerArray'),     xdctype = 0;
-    elseif isa(xdc, 'TransducerConvex'),    xdctype = 1;
-    elseif isa(xdc, 'TransducerMatrix'),    xdctype = 2;
-    else,                                   xdctype = 2;
-        % treat all others as matrix, since it is the most flexible
-    end
-    imp = copy(us.xdc.impulse);
-    imp.fs = 250e6; % sample at 250MHz
-    [th, phi] = orientations(xdc); % element orientations (deg)
-    pn = positions(xdc); % element positions (m)
-    lambda = c0 ./ xdc.fc; % wavelength
-    vTrans = struct( ...
-        strip('name            '), "custom", ...
-        strip('units           '), kwargs.units, ...
-        strip('frequency       '), us.xdc.fc / 1e6, ...
-        strip('Bandwidth       '), us.xdc.bw / 1e6, ...
-        strip('type            '), xdctype, ...
-        strip('numelements     '), us.xdc.numel, ...
-        strip('ElementPos      '), [pn * 1e3; deg2rad(th); deg2rad(phi)]', ...
-        strip('elementWidth    '), us.xdc.width, ...
-        strip('IR1wy           '), wv.samples, ...
-        strip('connType        '), -1, ... -1 specifies a UTA compatible connecter
-        strip('elevationFocusMm'), us.xdc.el_focus * 1e3, ...
-        strip('elevationApertureMm'), us.xdc.height * 1e3 ...
-        );
-    switch xdctype
-        case {0, 2, 4}, vTrans.spacing = us.xdc.pitch  ./ lambda;
-        case {1},       vTrans.radius  = us.xdc.radius ./ lambda;
-    end
+    vTrans = xdc.QUPS2VSX();
 else
     error("Unrecognized input for xdc.")
 end
@@ -92,21 +62,23 @@ dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-w
 vPData = VSXPData();
 % vPData.PDelta = [0.5, 0, 0.5];
 vPData.PDelta = [scan.dx, 0, scan.dz];
-vPData.Size = [scan.nz, scan.nx, scan.ny]; %-
+vPData.Size   = [scan.nz, scan.nx, scan.ny]; %-
 vPData.Origin = [scan.xb(1), scan.yb(1), scan.zb(1)];
 
 % TODO: compute pixel regions
 % vPData.Region = computeRegions(struct(vPData));
 
 % %     vResource.DisplayWindow(end+1) = VSXDisplayWindow('ReferencePt', vPData.Origin);
-vDisplayWindow = VSXDisplayWindow('ReferencePt', vPData.Origin);
-vDisplayWindow.Title = 'L11-5vFlashAngles';
-vDisplayWindow.pdelta = scan.dx; % 0.35;
-vDisplayWindow.Position = [250, 89.5, scan.nx, scan.nz];
-vDisplayWindow.ReferencePt = [vPData(1).Origin(1),0,vPData(1).Origin(3)];   % 2D imaging is in the X,Z plane
-vDisplayWindow.numFrames = kwargs.frames;
-vDisplayWindow.AxesUnits = 'mm';
-vDisplayWindow.Colormap = gray(256);
+vDisplayWindow = VSXDisplayWindow( ...
+    'ReferencePt', vPData.Origin, ...
+    'Title', 'L11-5vFlashAngles', ...
+    'pdelta', scan.dx, ...; % 0.35
+    'Position', [250, 89.5, scan.nx, scan.nz], ...
+    'ReferencePt', [vPData(1).Origin(1),0,vPData(1).Origin(3)], ... ;   % 2D imaging is in the X,Z plan
+    'numFrames', kwargs.frames, ...
+    'AxesUnits', 'mm', ...
+    'Colormap', gray(256) ...
+);
 vResource.DisplayWindow(end+1) = vDisplayWindow;
 
 %% Allocate buffers and Set Parameters
