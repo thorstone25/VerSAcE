@@ -4,5 +4,5 @@ function doRFDataStore(varargin)
 % When the button is pushed, this function set's the global variable
 % `toggle` to true. Inputs don't matter.
 
-global toggle; toggle = true;
+global TOGGLE_RFDataStore; TOGGLE_RFDataStore = true;
 end
