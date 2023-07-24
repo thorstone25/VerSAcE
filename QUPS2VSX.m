@@ -284,9 +284,12 @@ vUI.Callback = cellstr(["doRFDataStore(varargin)", "global TOGGLE_RFDataStore; T
 %% Block
 vBlock = VSXBlock('vsxevent', vEvent);
 
+%% Get timing info
+t0l = 2 * vTrans.lensCorrection; % lens correction in wavelengths
+
 %% Create a template ChannelData object
-x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'int16');
-chd = ChannelData('data', x, 'fs', fs_decim, 't0', t0, 'order', 'TMNF');
+x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'single');
+chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l)./xdc.fc, 'order', 'TMNF');
 
 %% added External Functions/Callback
 % restore warning state
