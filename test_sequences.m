@@ -3,7 +3,7 @@ c0 = 1500; % sound speed
 xdc = TransducerArray.L11_5v();
 uss = UltrasoundSystem('xdc', xdc); 
 uss.seq.c0 = c0;
-[uss.scan.dx, uss.scan.dz] = deal(uss.lambda / 4);
+[uss.scan.dx, uss.scan.dz] = deal(uss.lambda / 2);
 
 
 % sequences
@@ -17,10 +17,10 @@ uss = copy(repmat(uss, [1,3]));
 
 %%
 vres = VSXResource();
-i = 2; % just 1 selection for now
-[vb, vp, Trans, vu, chd] = QUPS2VSX(uss(i), "L11-5v", vres, "frames", 2);
 
-vs = link(vb, vres, vp, vu);
+us = copy(uss(2)); % just 1 selection for now
+[vb, vp, Trans, vu, chd] = QUPS2VSX(us, "L11-5v", vres, "frames", 1); % make block
+vs = link(vb, vres, vp, vu); % link
 vs.Trans = Trans; % add Trans
 pt1; vs.Media = Media; % add simulation media
 
@@ -28,8 +28,13 @@ pt1; vs.Media = Media; % add simulation media
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
 % save 
-filename = char(fullfile("MatFiles","qups-test.mat")); 
+filename = char(fullfile("MatFiles","qups-vsx.mat")); 
 save(filename, '-struct', 'vs');
 
+% fix Transducer to match VSX
+us.xdc = Transducer.Verasonics(Trans);
+
+% save
+save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
 
 %% 
