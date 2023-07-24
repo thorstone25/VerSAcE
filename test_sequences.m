@@ -17,9 +17,9 @@ uss = copy(repmat(uss, [1,3]));
 
 %%
 vres = VSXResource();
-
+xdc_name = "L11-5v";
 us = copy(uss(2)); % just 1 selection for now
-[vb, vp, Trans, vu, chd] = QUPS2VSX(us, "L11-5v", vres, "frames", 1); % make block
+[vb, vp, Trans, vu, chd] = QUPS2VSX(us, xdc_name, vres, "frames", 1); % make block
 vs = link(vb, vres, vp, vu); % link
 vs.Trans = Trans; % add Trans
 pt1; vs.Media = Media; % add simulation media
@@ -36,5 +36,7 @@ us.xdc = Transducer.Verasonics(Trans);
 
 % save
 save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
+
+VSX;
 
 %% 
