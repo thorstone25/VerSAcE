@@ -13,7 +13,7 @@ function [vBlock, vPData, vTrans, vUI, chd] = QUPS2VSX(us, xdc, vResource, kwarg
 % If xdc is a Transducer, a custom transducer definition is generated. The 
 % default is us.xdc.
 %
-% [...] = QUPS2VSX(us, xdc_name, vResource) uses the VSXResource vResource
+% [...] = QUPS2VSX(us, xdc, vResource) uses the VSXResource vResource
 % instead of creating a new VSXResource. You must specify this if
 arguments
     us (1,1) UltrasoundSystem
@@ -47,6 +47,9 @@ end
 % have VSX compute remaining properties
 vTrans = computeTrans(vTrans);
 
+% convert to QUPS
+xdc = Transducer.Verasonics(vTrans);
+
 % set global params
 lambda = c0 / (1e6*vTrans.frequency); % wavelengths
 
@@ -59,22 +62,13 @@ dnear = floor(2 * scan.zb(1)); % nearest distance (2-way)
 dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-way)
 
 %% PData
-vPData = VSXPData();
-% vPData.PDelta = [0.5, 0, 0.5];
-vPData.PDelta = [scan.dx, 0, scan.dz];
-vPData.Size   = [scan.nz, scan.nx, scan.ny]; %-
-vPData.Origin = [scan.xb(1), scan.yb(1), scan.zb(1)];
+vPData = VSXPData.QUPS(scan);
 
 % TODO: compute pixel regions
 % vPData.Region = computeRegions(struct(vPData));
 
-% %     vResource.DisplayWindow(end+1) = VSXDisplayWindow('ReferencePt', vPData.Origin);
-vDisplayWindow = VSXDisplayWindow( ...
-    'ReferencePt', vPData.Origin, ...
-    'Title', 'L11-5vFlashAngles', ...
-    'pdelta', scan.dx, ...; % 0.35
-    'Position', [250, 89.5, scan.nx, scan.nz], ...
-    'ReferencePt', [vPData(1).Origin(1),0,vPData(1).Origin(3)], ... ;   % 2D imaging is in the X,Z plan
+vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
+    'Title', 'VSX Beamformer', ...
     'numFrames', kwargs.frames, ...
     'AxesUnits', 'mm', ...
     'Colormap', gray(256) ...
@@ -90,9 +84,7 @@ fs_decim = fs_available(find(fs_available >= 4 * vTrans.frequency, 1, 'first'));
 % get the output data buffer length
 spw = fs_decim / vTrans.frequency; % samples per wave
 bufLen = 128 * ceil(2 * (dfar - dnear) * spw / 128); % only modulus 128 sample buffer length supported
-
-% T = 256 * 20; %% bufLen;
-T = bufLen;
+T = bufLen; % alias
 
 % make new buffers
 vbuf_inter = VSXInterBuffer('numFrames', kwargs.frames);
@@ -114,8 +106,8 @@ vResource.RcvBuffer(end+1)   = vbuf_rx;
 vTX = copy(repmat(VSXTX('waveform', kwargs.vTW), [1, us.seq.numPulse]));
 
 % get delay and apodization matrices
-delay = - us.seq.delays(us.xdc) * us.xdc.fc;
-apod  = us.seq.apodization(us.xdc);
+delay = - us.seq.delays(xdc) * xdc.fc;
+apod  = us.seq.apodization(xdc);
 t0    = min(delay, [], 1); % min over elements
 delay = delay - t0;
 
