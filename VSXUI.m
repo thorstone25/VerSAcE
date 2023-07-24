@@ -5,4 +5,14 @@ classdef VSXUI < matlab.mixin.Copyable
         Callback cell = {}
         % handle function_handle 
     end
+    methods
+        function obj = VSXUI(kwargs)
+            arguments
+                kwargs.?VSXUI
+            end
+            for f = string(fieldnames(kwargs))'
+                obj.(f) = kwargs.(f);
+            end
+        end
+    end
 end
