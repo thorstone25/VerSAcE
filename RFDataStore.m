@@ -7,7 +7,7 @@ function RFDataStore(RData)
         fnm = fullfile(save_dir, [datestr(now,'yyyymmdd_HHMMSS') '.mat']); % filename
         save(fnm, '-v7.3', '-nocompression', 'RData'); % TODO: maybe save as .dat file?
         disp("RF data saved to " + fnm);
-        toggle = false; % unset variable saving
+        TOGGLE_RFDataStore = false; % unset variable saving
     end
     return
 end
