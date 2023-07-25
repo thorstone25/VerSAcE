@@ -24,6 +24,8 @@ arguments
     kwargs.vTGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC('CntrlPts', [0,297,424,515,627,764,871,1000],...
         'rangeMax', hypot(us.scan.zb(2), us.scan.xb(2)) ./ us.lambda); %-
     kwargs.frames (1,1) {mustBeInteger, mustBePositive} = 1;
+    kwargs.sample_mode (1,1) string {mustBeMember(kwargs.sample_mode, ["NS200BW", "NS200BWI", "BS100BW",  "BS67BW",  "BS50BW",  "custom"])} = "NS200BW"
+    kwargs.custom_fs (1,1) double
 end
 
 % squash obj to struct warning
@@ -77,9 +79,20 @@ vResource.DisplayWindow(end+1) = vDisplayWindow;
 
 %% Allocate buffers and Set Parameters
 
-% infer the selected sampling frequency for NS200BW
 fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies
-fs_decim = fs_available(find(fs_available >= 4 * vTrans.frequency, 1, 'first')); % decimation frequency for NS200BW
+
+% decimation frequency as per sampleMode
+if kwargs.sample_mode == "NS200BW"
+    fs_decim = fs_available(find(fs_available >= 4 * vTrans.frequency, 1)); 
+elseif kwargs.sample_mode == "BS100BW"
+    fs_decim = fs_available(find(fs_available >= 2 * vTrans.frequency, 1));
+elseif kwargs.sample_mode == "BS67BW"
+    fs_decim = fs_available(find(fs_available >= (2*0.67) * vTrans.frequency, 1));
+elseif kwargs.sample_mode == "BS50BW"
+    fs_decim = fs_available(find(fs_available >= 1 * vTrans.frequency, 1));
+elseif kwargs.sample_mode == "custom"
+    fs_decim = fs_available(find(fs_available >= kwargs.custom_fs, 1));
+end
 
 % get the output data buffer length
 spw = fs_decim / vTrans.frequency; % samples per wave
@@ -143,7 +156,8 @@ kwargs.vTGC.Waveform = computeTGCWaveform(kwargs.vTGC, 1e6*vTrans.frequency);
 
 %% Rcv
 % default
-vRcv = VSXReceive('startDepth', dnear, 'endDepth', dfar, 'bufnum', vbuf_rx);
+vRcv = VSXReceive('startDepth', dnear, 'endDepth', dfar, 'bufnum', vbuf_rx, 'sampleMode', kwargs.sample_mode);
+if kwargs.sample_mode == "custom", vRcv.decimSampleRate = fs_decim; end
 vRcv.Apod = ones([1, vResource.Parameters.numRcvChannels]);
 vRcv.TGC = kwargs.vTGC;
 
@@ -228,9 +242,10 @@ proc_rf_data.Parameters = {
 
 
 %% SeqControl
+t_puls = ceil(T / fs_decim) + 5; % pulse length + buffer in us
 jump_to_image_start      = VSXSeqControl('command', 'jump', 'argument', 1);
-wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', 160);
-wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', 19040);
+wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls); 
+wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls*us.seq.numPulse);
 return_to_matlab         = VSXSeqControl('command', 'returnToMatlab');
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
 no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2); % 'condition', 'Hw&Sw');

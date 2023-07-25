@@ -6,6 +6,9 @@ function RFDataStore(RData)
         disp('Saving RF data ...')
         fnm = fullfile(save_dir, [datestr(now,'yyyymmdd_HHMMSS') '.mat']); % filename
         save(fnm, '-v7.3', '-nocompression', 'RData'); % TODO: maybe save as .dat file?
+        fileName = datestr(now,'yyyymmdd_HHMMSS') + ".mat";
+        fileNames = [fileName, "MatFiles/qups-vsx.mat", "MatFiles/qups-conf.mat"];
+        mergeMatFiles(fileNames, "MatFiles/");
         disp("RF data saved to " + fnm);
         TOGGLE_RFDataStore = false; % unset variable saving
     end
