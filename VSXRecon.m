@@ -8,6 +8,8 @@ classdef VSXRecon < matlab.mixin.Copyable
         ImgBufDest (1,1) VSXImageBuffer
         ImgBufDestFrm (1,1) double = -1
         RINums (1,:) VSXReconInfo
+        newFrameTimeout (1,1) double = 1000 % timeout in ms
+        rcvLUT (:,:) uint16 = []
     end
     methods
         function obj = VSXRecon(kwargs)
