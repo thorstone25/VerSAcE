@@ -228,9 +228,10 @@ proc_rf_data.Parameters = {
 
 
 %% SeqControl
+t_puls = round(T / fs_decim) + 50;
 jump_to_image_start      = VSXSeqControl('command', 'jump', 'argument', 1);
-wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', 160);
-wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', 19040);
+wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
+wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls*us.seq.numPulse*1.2); % max TTNA is 4190000
 return_to_matlab         = VSXSeqControl('command', 'returnToMatlab');
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
 no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2); % 'condition', 'Hw&Sw');
