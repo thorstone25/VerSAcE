@@ -3,6 +3,7 @@ global TOGGLE_RFDataProc;
 persistent us chd0 D; % UltrasoundSystem, ChannelData, filter
 persistent him a; % image handle, apodization
 persistent b k PRE_ARGS POST_ARGS; % DAS arguments
+persistent isHadamard; % is a hadamard encoded transmit?
 
 % default to false, just in case
 if isempty(TOGGLE_RFDataProc), TOGGLE_RFDataProc = false; end
@@ -24,6 +25,13 @@ if TOGGLE_RFDataProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvali
     sz = size(chd.data);
     sz(1) = mode([Receive.endSample] - [Receive.startSample] + 1);
     chd.data = zeros(sz, 'like', chd.data);
+    
+    % HACK: check if hadamard transmit
+    isHadamard = isequal(us.seq.apodization(us.xdc), hadamard(us.xdc.numel));
+
+    % adjust scan to start at 2mm
+    us.scan = copy(us.scan); 
+    us.scan.z = us.scan.z + 2e-3;
     
     % allocate data
     chd = (singleT(chd)); % typing
@@ -55,6 +63,7 @@ if TOGGLE_RFDataProc
     
     % process
     chd = (filter(hilbert(chd0),D));
+    if isHadamard, chd.data = pagemtimes(chd.data, hadamard(us.xdc.numel)); end
     b   = DAS(us, chd, 'apod', a);
     
     % display
