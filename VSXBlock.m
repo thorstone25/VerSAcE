@@ -101,27 +101,18 @@ classdef VSXBlock < matlab.mixin.Copyable
             % remove extra *Frm argument
             Recon = rmfield(Recon, ["IntBufDestFrm", "ImgBufDestFrm"]);
 
-	    % assign indices for ReconInfo
-	    for i = 1:numel(vReconInfo)
+    	    % assign indices for ReconInfo
+    	    for i = 1:numel(vReconInfo)
                 ReconInfo(i).txnum  = safeIsMember([vReconInfo(i).txnum] , vTx);
                 ReconInfo(i).rcvnum = safeIsMember([vReconInfo(i).rcvnum], vRcv);
-		% TODO: add regionnum property vs. VSXRegion
-		if isempty(ReconInfo(i).regionnum)
-		    ReconInfo(i).regionnum = 1; % if no regions specified, use 1st region
-		end
-	    end
+        		% TODO: add regionnum property vs. VSXRegion
+        		if isempty(ReconInfo(i).regionnum)
+        		    ReconInfo(i).regionnum = 1; % if no regions specified, use 1st region
+        		end
+    	    end
 
-            
-            % checking UI for empty values
-            for i = 1 : numel(UI)
-                for f = string(fieldnames(UI))'
-                    if isempty(UI(i).(f))
-                        UI(i).(f) = 0;
-                    end
-                end
-            end
-
-            % ----seqcontrol
+            %% Parse special arguments
+            % SeqControl
             for i = 1:numel(SeqControl)
                 % link the index for jump commands
                 if SeqControl(i).command == "jump"
@@ -193,6 +184,7 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % convert some logicals to double
             [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
+            [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync );
 
             % clear nan values from TX struct
             for f = ["focus", "Steer", "FocalPt"]
@@ -232,6 +224,9 @@ elseif iscell(x) % cell container
     end
 elseif isstring(x)
     y = char(x);
+    if xor(isempty(x), isempty(y))
+        error("VSX-OOD:VSXBlock:string2charEmptiness", "String and char emptiness not identical - use string.empty not """" for an empty string.");
+    end
 else
     % do nothing
 end

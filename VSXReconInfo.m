@@ -13,11 +13,18 @@ classdef VSXReconInfo < matlab.mixin.Copyable
             "accumIQ_normalize", ...
             "replaceIQ_pages", ...
             "accumIQ_pages", ...
-            ])} = "replaceIQ"
-        txnum (1,1) VSXTX
-        rcvnum (1,1) VSXReceive
-        regionnum {mustBeScalarOrEmpty} = [] % PData.region index -> 1 if no regions 
-        
+            ])} = "replaceIQ" % pixel buffer modification behaviour
+        txnum (1,1) VSXTX % transmit event
+        rcvnum (1,1) VSXReceive % receive event
+        regionnum {mustBeScalarOrEmpty} = [] % PData.region index -> 1 if no regions
+        pagenum {mustBeScalarOrEmpty} = [] % interbuffer page number
+        normPower (1,1) double = 1; % normalization exponent for multiplying signals
+        normWeight (1,1) double = 1; % normalization coefficient for adding signals
+        scaleFactor (1,1) double = 1; % scales all reconstruction to remain within bit-width
+        Pre  string {mustBeScalarOrEmpty, mustBeMember(Pre , ["clearInterBuf","clearImageBuf","interleaveRF"])} = string.empty
+        Post string {mustBeScalarOrEmpty, mustBeMember(Post, ["IQ2IntensityImageBuf","IQ2IntensityImageBufAdd","IQ2IntensityImageBufMul"])} = string.empty
+        threadSync (1,1) logical = false
+        LUT (:,:) int32 = []
     end
     methods
         function obj = VSXReconInfo(kwargs)
