@@ -2,7 +2,7 @@ function [Recon, ReconInfo] = setVSXLUT(Recon, ReconInfo, tau_rx, tau_tx, fc, ap
 arguments
     Recon (1,1) {mustBeA(Recon, ["struct", "VSXRecon"])}
     ReconInfo (:,:) {mustBeA(ReconInfo, ["struct", "VSXReconInfo"])}
-    tau_rx (:,:,:,:,1) double % delays: pixels x rx
+    tau_rx (:,:,:,:,1) double % delays: rx x pixels (!!!!!)
     tau_tx (:,:,:,1,:) double % delays: pixels x tx
     fc double = 1; % transmit frequency
     apod_tx (:,:,:,1,:) double {mustBeInRange(apod_tx, -8388608, 8388608)} = ones(size(tau_tx)) % weights: pixels x tx % NOTE: this can clip
@@ -30,6 +30,6 @@ for m = 1:M
     [ReconInfo(i).LUT] = deal(lut); % assign
 end
 
-% rx side look-up table: pixel x elements in units of wavelengths
-Recon.rcvLUT = uint16(round(double(reshape(tau_rx, [I, N]) * fc) * 16));
+% rx side look-up table: elements x pixels in units of wavelengths
+Recon.rcvLUT = uint16(round(double(reshape(tau_rx, [I, N])' * fc) * 16));
 
