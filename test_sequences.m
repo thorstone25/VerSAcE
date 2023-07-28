@@ -27,6 +27,10 @@ pt1; vs.Media = Media; % add simulation media
 % force in simulation mode for testing
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
+% DEBUG: test the manual receive delays
+[~, tau_rx, tau_tx] = bfDAS(us, chd, 'delay_only', true);
+[vs.Recon, vs.ReconInfo] = setVSXLUT(vs.Recon, vs.ReconInfo, tau_rx, tau_tx, us.xdc.fc);
+
 % save 
 filename = char(fullfile("MatFiles","qups-vsx.mat")); 
 save(filename, '-struct', 'vs');
@@ -37,6 +41,6 @@ us.xdc = Transducer.Verasonics(Trans);
 % save
 save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
 
-VSX;
+% VSX;
 
 %% 
