@@ -26,10 +26,17 @@ arguments
     kwargs.frames (1,1) {mustBeInteger, mustBePositive} = 1;
     kwargs.sample_mode (1,1) string {mustBeMember(kwargs.sample_mode, ["NS200BW", "NS200BWI", "BS100BW",  "BS67BW",  "BS50BW",  "custom"])} = "NS200BW"
     kwargs.custom_fs (1,1) double
+    kwargs.recon_VSX (1,1) logical = true
+    kwargs.recon_custom (1,1) logical = true
+    kwargs.saver_custom (1,1) logical = true
 end
 
 % squash obj to struct warning
 warning_state = warning('off', 'MATLAB:structOnObject');
+
+% init
+vUI     = reshape(VSXUI.empty   , [1 0]);
+vPData  = reshape(VSXPData.empty, [1 0]);
 
 %% Trans
 % set sound speed
@@ -63,22 +70,7 @@ scan = scale(us.scan, 'dist', 1./lambda);
 dnear = floor(2 * scan.zb(1)); % nearest distance (2-way)
 dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-way)
 
-%% PData
-vPData = VSXPData.QUPS(scan);
-
-% TODO: compute pixel regions
-% vPData.Region = computeRegions(struct(vPData));
-
-vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
-    'Title', 'VSX Beamformer', ...
-    'numFrames', kwargs.frames, ...
-    'AxesUnits', 'mm', ...
-    'Colormap', gray(256) ...
-);
-vResource.DisplayWindow(end+1) = vDisplayWindow;
-
 %% Allocate buffers and Set Parameters
-
 fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies
 
 % decimation frequency as per sampleMode
@@ -99,21 +91,14 @@ spw = fs_decim / vTrans.frequency; % samples per wave
 bufLen = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sample buffer length supported
 T = bufLen; % alias
 
-% make new buffers
-vbuf_inter = VSXInterBuffer('numFrames', kwargs.frames);
-vbuf_im    = VSXImageBuffer('numFrames', kwargs.frames);
+% make new rx buffer
 vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
     'rowsPerFrame', T * us.seq.numPulse,...  %-
     'colsPerFrame', vResource.Parameters.numRcvChannels...
     );
 
 % add buffers to the resources
-vResource.InterBuffer(end+1) = vbuf_inter;
-vResource.ImageBuffer(end+1) = vbuf_im;
 vResource.RcvBuffer(end+1)   = vbuf_rx;
-
-%% TW
-% vTW = kwargs.vTW;
 
 %% TX
 vTX = copy(repmat(VSXTX('waveform', kwargs.vTW), [1, us.seq.numPulse]));
@@ -165,41 +150,125 @@ vRcv.TGC = kwargs.vTGC;
 vRcv = copy(repmat(vRcv,[us.seq.numPulse, kwargs.frames]));
 
 % - Set event specific Receive attributes.
-for i = 1:kwargs.frames
+for f = 1:kwargs.frames
     % move points before (or after?) first receive of the frame
-    vRcv(1,i).callMediaFunc = true;
-    for j = 1:us.seq.numPulse
-        vRcv(j,i).framenum = i;
-        vRcv(j,i).acqNum = j;
+    vRcv(1,f).callMediaFunc = true;
+    for i = 1:us.seq.numPulse
+        vRcv(i,f).framenum = f;
+        vRcv(i,f).acqNum   = i;
     end
 end
 
+%% SeqControl
+t_puls = round(T / fs_decim) + 50; % pulse wait time
+t_frm = t_puls*us.seq.numPulse*1.2; % frame wait time
+wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
+wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_frm ); % max TTNA is 4190000
+transfer_to_host         = VSXSeqControl('command', 'transferToHost');
+no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2); % 'condition', 'Hw&Sw');
+
+%% Event loop
+% loop through all events and frames
+% ---------- Events ------------- %
+vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), [us.seq.numPulse, kwargs.frames]));
+
+for f = 1:kwargs.frames
+    for i = 1:us.seq.numPulse % each transmit
+        vEvent(i,f) = VSXEvent('info',"Tx "+i,'tx',vTX(i),'rcv',vRcv(i,f));
+    end
+
+    % transfer data to host using the last event of the frame
+    vEvent(i,f).seqControl = [wait_for_pulse_sequence, transfer_to_host]; % modify last acquisition vEvent's seqControl
+end
+    
+%% Add Events per frame 
+% make recon image and return to MATLAB
+if kwargs.recon_VSX
+    return_to_matlab = VSXSeqControl('command', 'returnToMatlab');
+    [vEvent(end+1,:), vPData(end+1)] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, kwargs.frames);
+    vEvent(end,:) = copy(vEvent(end,:)); % copy to make unique Events for each frame
+end
+
+%% Add Events at the end of the loop
+% vectorize
+vEvent = vEvent(:);
+
+% custom reconstruction process and ui
+if kwargs.recon_custom
+    [vUI(end+1), vEvent(end+1)] = addCustomRecon(vbuf_rx, no_operation);
+end
+
+% custom saving process and ui
+if kwargs.saver_custom
+    [vUI(end+1), vEvent(end+1)] = addCustomSaver(vbuf_rx, no_operation);
+end
+
+% return to start of block after all Events
+% TODO: add option for what to do after the end of all events
+vEvent(end+1) = VSXEvent('info', 'Jump back', 'seqControl', ...
+    VSXSeqControl('command', 'jump', 'argument', vEvent(1)) ...
+    );
+
+% ---------- Events ------------- %
+
+%% Block
+vBlock = VSXBlock('vsxevent', vEvent);
+
+%% Create a template ChannelData object
+% TODO: call computeTWWaveform to get TW.peak correction
+t0l = 2 * vTrans.lensCorrection; % lens correction in wavelengths
+x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'single');
+chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l)./xdc.fc, 'order', 'TMNF');
+
+%% added External Functions/Callback
+% restore warning state
+warning(warning_state);
+
+% done!
+return; 
+
+function [vEvent, vPData] = addVSXRecon(scan, vResource, vTX, vRcv, vSeq, frames)
+arguments
+    scan Scan
+    vResource VSXResource
+    vTX VSXTX
+    vRcv VSXReceive
+    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
+    frames (1,1) double = 1
+end
+%% PData
+vPData = VSXPData.QUPS(scan);
+
+% TODO: compute pixel regions
+% vPData.Region = computeRegions(struct(vPData));
+
+vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
+    'Title', 'VSX Beamformer', ...
+    'numFrames', frames, ...
+    'AxesUnits', 'mm', ...
+    'Colormap', gray(256) ...
+);
+
+vbuf_inter = VSXInterBuffer('numFrames', frames);
+vbuf_im    = VSXImageBuffer('numFrames', frames);
+
 %% Recon
 vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vbuf_im);
-%{
-vRecon.senscutoff = 0.6;
-vRecon.pdatanum = vPData;
-vRecon.rcvBufFrame = -1;
-vRecon.IntBufDest = vbuf_inter;
-vRecon.IntBufDestFrm = 1;
-vRecon.ImgBufDest = vbuf_im;
-vRecon.ImgBufDestFrm = -1;
-%}
 
 % Define ReconInfo structures.
 % We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), [1,us.seq.numPulse]));  % default is to accumulate IQ data.
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vTX)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
-if us.seq.numPulse <= 1
+if isscalar(vReconInfo) % 1 tx
     vReconInfo(1).mode = 'replaceIntensity';
 else
-    vReconInfo(1).mode = 'replaceIQ'; % replace IQ data
-    for j = 1:us.seq.numPulse  % For each row in the column
-        vReconInfo(j).txnum = vTX(j);
+    for j = 1:numel(vTX) % For each row in the column
+        vReconInfo(j).txnum  = vTX( j);
         vReconInfo(j).rcvnum = vRcv(j);
     end
-    vReconInfo(us.seq.numPulse).mode = 'accumIQ_replaceIntensity'; % accum and detect
+    vReconInfo( 1 ).mode = 'replaceIQ'; % first 1 replace IQ data
+    vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % last one accum and detect
 end
 
 % associate the reconinfo
@@ -226,13 +295,26 @@ display_image_process.Parameters = {
     'displayWindow', vDisplayWindow, ...
     }; 
 
-save_rf_data = VSXProcess('classname', 'External', 'method', 'RFDataStore');
-save_rf_data.Parameters = {
-    'srcbuffer','receive',...
-    'srcbufnum', vbuf_rx,... 
-    'srcframenum',0,...
-    'dstbuffer','none'};
+%% Event
+vEvent = VSXEvent(...
+    'info', 'recon and process', ...
+    'recon', vRecon, ...
+    'process', display_image_process, ...
+    'seqControl', vSeq ...
+    );
 
+%% Add to required Resource buffer
+vResource.InterBuffer(end+1)    = vbuf_inter;
+vResource.ImageBuffer(end+1)    = vbuf_im;
+vResource.DisplayWindow(end+1)  = vDisplayWindow;
+
+
+function [vUI, vEvent] = addCustomRecon(vbuf_rx, vSeq)
+arguments
+    vbuf_rx (1,1) VSXRcvBuffer
+    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
+end
+%% Add custom data processing
 proc_rf_data = VSXProcess('classname', 'External', 'method', 'RFDataProc');
 proc_rf_data.Parameters = {                                                     
     'srcbuffer','receive',...                                                   
@@ -240,97 +322,33 @@ proc_rf_data.Parameters = {
     'srcframenum',0,...                                                         
     'dstbuffer','none'};                                                        
 
-
-%% SeqControl
-t_puls = round(T / fs_decim) + 50;
-jump_to_image_start      = VSXSeqControl('command', 'jump', 'argument', 1);
-wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
-wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls*us.seq.numPulse*1.2); % max TTNA is 4190000
-return_to_matlab         = VSXSeqControl('command', 'returnToMatlab');
-transfer_to_host         = VSXSeqControl('command', 'transferToHost');
-no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2); % 'condition', 'Hw&Sw');
-
-%% Event
-
-% loop through all events and frames
-% ---------- Events ------------- %
-vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), [us.seq.numPulse, kwargs.frames]));
-
-for f = 1:kwargs.frames
-    for i = 1:us.seq.numPulse % each transmit
-        vEvent(i,f).info = 'Full aperture.';
-        vEvent(i,f).tx  = vTX(i);
-        vEvent(i,f).rcv = vRcv(i,f);
-        vEvent(i,f).rcv.acqNum = i;
-    end
-
-    % transfer data to host using the last event
-    vEvent(i,f).seqControl = [wait_for_pulse_sequence, transfer_to_host]; % modify last acquisition vEvent's seqControl
-
-    % actions per frame go here
-    % post-processing events and return to MATLAB
-    vEvent(i+1,f) = VSXEvent(...
-        'info', 'recon and process', ...
-        'recon', vRecon, ...
-        'process', display_image_process, ...
-        'seqControl', return_to_matlab ...
-        );
-end
-
-% first event 
-acq_start_evnt = vEvent(1,1);
-
-% vectorize
-vEvent = vEvent(:);
-
-% save all RF Data
-vEvent(end+1) = VSXEvent(...
-    'info', 'Save RF Data', ...
-    'process', save_rf_data,...
-    'seqControl', no_operation...
-    );
-
-% process RF Data
-vEvent(end+1) = VSXEvent(...
-    'info', 'Process RF Data', ...      
-    'process', proc_rf_data,...      
-    'seqControl', no_operation...    
-    );                               
-                                     
-% return to start of block
-vEvent(end+1) = VSXEvent(...
-    'info', 'Jump back',...
-    'seqControl', jump_to_image_start);
-
-% ------------ Events ------------ %
-jump_to_image_start.argument = acq_start_evnt;
-
-%% ADD UI
-UI_save = VSXUI( ...
-'Control', {'UserB1','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', @doRFDataStore}, ...
-'Callback', cellstr(["doRFDataStore(varargin)", "global TOGGLE_RFDataStore; TOGGLE_RFDataStore = true; return;"]) ...
-);
-
-UI_proc = VSXUI( ...
+vUI = VSXUI( ...
 'Control', {'UserB2','Style','VsToggleButton','Label', 'Process RFData', 'Callback', @doRFDataProc}, ...
 'Statement', cellstr(["global TOGGLE_RFDataProc; TOGGLE_RFDataProc = false; return;"]), ... init
 'Callback', cellstr(["doRFDataProc(varargin)", "global TOGGLE_RFDataProc; TOGGLE_RFDataProc = logical(UIState); return;"]) ...
 );
 
-vUI = [UI_save, UI_proc];
+% process RF Data
+vEvent = VSXEvent('info', 'Process RF Data', 'process', proc_rf_data, 'seqControl', vSeq);                               
 
-%% Block
-vBlock = VSXBlock('vsxevent', vEvent);
-
-%% Get timing info
-t0l = 2 * vTrans.lensCorrection; % lens correction in wavelengths
-
-%% Create a template ChannelData object
-x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'single');
-chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l)./xdc.fc, 'order', 'TMNF');
-
-%% added External Functions/Callback
-% restore warning state
-warning(warning_state);
-
+function [vUI, vEvent] = addCustomSaver(vbuf_rx, vSeq)
+arguments
+    vbuf_rx (1,1) VSXRcvBuffer
+    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
 end
+%% Process: saving data
+save_rf_data = VSXProcess('classname', 'External', 'method', 'RFDataStore');
+save_rf_data.Parameters = {
+    'srcbuffer','receive',...
+    'srcbufnum', vbuf_rx,... 
+    'srcframenum',0,...
+    'dstbuffer','none'};
+
+vUI = VSXUI( ...
+'Control', {'UserB1','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', @doRFDataStore}, ...
+'Callback', cellstr(["doRFDataStore(varargin)", "global TOGGLE_RFDataStore; TOGGLE_RFDataStore = true; return;"]) ...
+);
+
+% save all RF Data
+vEvent = VSXEvent('info', 'Save RF Data', 'process', save_rf_data, 'seqControl', vSeq);
+
