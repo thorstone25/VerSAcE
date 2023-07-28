@@ -265,17 +265,15 @@ vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vb
 vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vPData.Region)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
-if isscalar(vReconInfo) % 1 tx
-    vReconInfo(1).mode = 'replaceIntensity';
-else
-    for j = 1:numel(vReconInfo) % For each reconinfo object
-        vReconInfo(j).txnum  = vTX( j);
-        vReconInfo(j).rcvnum = vRcv(j);
-        vReconInfo(j).regionnum = j; % TODO: VSXRegion
-    end
-    vReconInfo( 1 ).mode = 'replaceIQ'; % first 1 replace IQ data
-    vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % last one accum and detect
+for j = 1:numel(vReconInfo) % For each reconinfo object
+    vReconInfo(j).txnum  = vTX( j); % tx
+    vReconInfo(j).rcvnum = vRcv(j); % rx
+    vReconInfo(j).regionnum = j; % TODO: VSXRegion
 end
+vReconInfo( 1 ).mode = 'replaceIQ'; % on first tx, replace IQ data
+vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % on last tx, accum and "detect"
+
+if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx
 
 % associate the reconinfo
 vRecon.RINums = vReconInfo;

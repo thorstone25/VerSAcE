@@ -7,7 +7,7 @@ classdef VSXRecon < matlab.mixin.Copyable
         IntBufDestFrm (1,1) double = 1
         ImgBufDest (1,1) VSXImageBuffer
         ImgBufDestFrm (1,1) double = -1
-        RINums (1,:) VSXReconInfo
+        RINums (1,:) VSXReconInfo = VSXReconInfo.empty
         newFrameTimeout (1,1) double = 1000 % timeout in ms
         rcvLUT (:,:) uint16 = []
     end
