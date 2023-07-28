@@ -6,7 +6,7 @@ classdef VSXPData < matlab.mixin.Copyable
         PDelta (1,:) double
         Size (1,:) double
         Origin (1,:) double
-% %         Region struct
+        Region (1,:) struct = struct('Shape',struct('Name','PData'),'numPixels',[],'PixelsLA',[]);
     end
     methods
         function obj = VSXPData(kwargs)
@@ -18,16 +18,24 @@ classdef VSXPData < matlab.mixin.Copyable
             end
         end
     end
+    methods
+        function addRegionPData(vPData)
+            
+        end
+        function addRegionRectangle(vPData)
+
+        end
+    end
     methods(Static)
         function vPData = QUPS(scan)
-	    arguments
-	        scan (1,1) ScanCartesian
-	    end
-	    vPData = VSXPData(...
-	    'PDelta', [scan.dx, 0, scan.dz],...
-	    'Size'  , [scan.nz, scan.nx, scan.ny],...
-	    'Origin', [scan.xb(1), scan.yb(1), scan.zb(1)] ...
-	    );
+    	    arguments
+    	        scan (1,1) ScanCartesian
+    	    end
+    	    vPData = VSXPData(...
+        	    'PDelta', [scan.dx, 0, scan.dz],...
+        	    'Size'  , [scan.nz, scan.nx, scan.ny],...
+        	    'Origin', [scan.xb(1), scan.yb(1), scan.zb(1)] ...
+        	    );
         end
     end
 end
