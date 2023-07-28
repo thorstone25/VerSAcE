@@ -29,7 +29,7 @@ vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardw
 
 % DEBUG: test the manual receive delays
 [~, tau_rx, tau_tx] = bfDAS(us, chd, 'delay_only', true);
-[vs.Recon, vs.ReconInfo] = setVSXLUT(vs.Recon, vs.ReconInfo, tau_rx, tau_tx + swapdim(chd.t0,chd.mdim,4), us.xdc.fc);
+[vs.Recon, vs.ReconInfo] = setVSXLUT(vs.Recon, vs.ReconInfo, tau_rx, tau_tx + swapdim(chd.t0,chd.mdim,5), us.xdc.fc);
 
 % save 
 filename = char(fullfile("MatFiles","qups-vsx.mat")); 
