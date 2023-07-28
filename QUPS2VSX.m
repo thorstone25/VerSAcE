@@ -237,10 +237,15 @@ arguments
     frames (1,1) double = 1
 end
 %% PData
+% create the pixel data
 vPData = VSXPData.QUPS(scan);
 
-% TODO: compute pixel regions
-% vPData.Region = computeRegions(struct(vPData));
+% create a default region for each transmit
+% TODO: VSXRegion
+vPData.Region = repmat(vPData.Region, size(vTX));
+
+% fill out the regions
+vPData.Region = computeRegions(struct(vPData));
 
 vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
     'Title', 'VSX Beamformer', ...
@@ -257,15 +262,16 @@ vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vb
 
 % Define ReconInfo structures.
 % We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vTX)));  % default is to accumulate IQ data.
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vPData.Region)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
 if isscalar(vReconInfo) % 1 tx
     vReconInfo(1).mode = 'replaceIntensity';
 else
-    for j = 1:numel(vTX) % For each row in the column
+    for j = 1:numel(vReconInfo) % For each reconinfo object
         vReconInfo(j).txnum  = vTX( j);
         vReconInfo(j).rcvnum = vRcv(j);
+        vReconInfo(j).regionnum = j; % TODO: VSXRegion
     end
     vReconInfo( 1 ).mode = 'replaceIQ'; % first 1 replace IQ data
     vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % last one accum and detect
