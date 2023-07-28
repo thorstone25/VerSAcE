@@ -242,10 +242,10 @@ vPData = VSXPData.QUPS(scan);
 
 % create a default region for each transmit
 % TODO: VSXRegion
-vPData.Region = repmat(vPData.Region, size(vTX));
+vPData.Region = repmat(struct('PixelsLA', 0:scan.nPix-1, 'numPixels', scan.nPix), size(vTX));
 
 % fill out the regions
-vPData.Region = computeRegions(struct(vPData));
+% vPData.Region = computeRegions(struct(vPData));
 
 vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
     'Title', 'VSX Beamformer', ...
