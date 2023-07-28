@@ -37,6 +37,13 @@ classdef VSXBlock < matlab.mixin.Copyable
             vInterBuffer   = unique([vResource.InterBuffer  ], 'stable');
             vImageBuffer   = unique([vResource.ImageBuffer  ], 'stable');
             vParameters    = unique([vResource.Parameters   ], 'stable');
+
+            % PData can be referenced in the Parameters field of a Process 
+            % (Image or Doppler specifically, if it exists) or in the Recon
+            % structure
+            vpd = cellfun(@(p) p(2*find("pdatanum" == p(1:2:end))), {vProcess.Parameters}, 'UniformOutput', false);
+            vpd = [vpd{:}];
+            vPData = unique([vRecon.pdatanum, vpd{:}], 'stable');
             
             %% convert to Verasonics definition
             % convert to structs
