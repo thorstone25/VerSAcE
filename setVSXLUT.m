@@ -21,7 +21,7 @@ if any(apod_tx > (double(intmax('int32'))+0.5)/256, 'all'), warning("Positive we
 % TODO: disable pixels with 0 weight and/or coordinate with PData.Regions
 addr    = int32(0:I-1)'; % all pixels for now 
 wght    = int32(round(double(reshape(apod_tx, [I, M]) * 256))); % cast weight
-tau_tx  = int32(round(double(reshape(tau_tx , [I, M]) * fc) * 16)); % convert and cast delays
+tau_tx  = max(0,int32(round(double(reshape(tau_tx , [I, M]) * fc) * 16))); % convert and cast delays
 
 % store for each tx
 for m = 1:M
