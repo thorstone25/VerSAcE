@@ -1,9 +1,9 @@
 classdef VSXUI < matlab.mixin.Copyable
     properties
-        Statement (1,:) char = ''
+        Statement (:,1) string = string.empty
         Control cell = {}
         Callback cell = {}
-        % handle function_handle 
+        % handle function_handle (set by VSX)
     end
     methods
         function obj = VSXUI(kwargs)

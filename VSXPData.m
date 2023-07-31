@@ -18,14 +18,6 @@ classdef VSXPData < matlab.mixin.Copyable
             end
         end
     end
-    methods
-        function addRegionPData(vPData)
-            
-        end
-        function addRegionRectangle(vPData)
-
-        end
-    end
     methods(Static)
         function vPData = QUPS(scan)
     	    arguments
