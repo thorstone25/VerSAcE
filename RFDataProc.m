@@ -1,4 +1,11 @@
-function RFDataProc(RData)
+function chd = RFDataProc(RData, conf, kwargs)
+arguments
+    RData {mustBeNumeric}
+    conf struct {mustBeScalarOrEmpty} = struct.empty
+    kwargs.display (1,1) logical = true;
+    kwargs.verbose (1,1) logical = true;
+end
+
 global TOGGLE_RFDataProc;
 persistent us chd0 D; % UltrasoundSystem, ChannelData, filter
 persistent him a; % image handle, apodization
@@ -9,23 +16,30 @@ persistent isHadamard; % is a hadamard encoded transmit?
 if isempty(TOGGLE_RFDataProc), TOGGLE_RFDataProc = false; end
 
 % load data and pre-allocate outputs the first time
-if TOGGLE_RFDataProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))
-    disp("Initializing ... ");
+if ~isempty(conf) || (TOGGLE_RFDataProc ... either post-processing or triggered and
+    && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))) % if conf or image not initialized ...
+    if kwargs.verbose, disp("Initializing ... "); end
     
     % init system config and data
-    dat = load("qups-conf.mat", "us", "chd"); % load classes
+    if all(isfield(conf, ["us", "chd"]))
+        dat = conf; % use input
+    else
+        dat = load("qups-conf.mat", "us", "chd"); % load classes
+    end
     [us, chd] = deal(dat.us, dat.chd); % assign
+
+    % HACK: get from base when running live
+    % if ~isfield(conf, 'TW'), conf.TW = evalin('base', 'TW'); end
     
-    % HACK: fix the start time for the pulse
-    TW = evalin('base', 'TW');
-    chd.t0 = chd.t0 - TW.peak ./ us.xdc.fc;
-    
-    % HACK: fix the buffer length
-    Receive = evalin('base', 'Receive');
-    sz = size(chd.data);
-    sz(1) = mode([Receive.endSample] - [Receive.startSample] + 1);
-    chd.data = zeros(sz, 'like', chd.data);
-    
+    % fix the start time for the pulse 
+    % chd.t0 = chd.t0 - conf.TW.peak ./ us.xdc.fc;
+
+    % fix the true buffer length
+    % if ~isfield(conf, 'Receive'), conf.Receive = evalin('base', 'Receive'); end
+    % sz = size(chd.data);
+    % sz(1) = mode([conf.Receive.endSample] - [conf.Receive.startSample] + 1);
+    % chd.data = zeros(sz, 'like', chd.data);
+
     % HACK: check if hadamard transmit
     isHadamard = isequal(us.seq.apodization(us.xdc), hadamard(us.xdc.numel));
 
@@ -45,18 +59,20 @@ if TOGGLE_RFDataProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvali
     [b, k, PRE_ARGS, POST_ARGS] = DAS(us, chd, 'apod', a);
     
     % init display
-    figure;
-    him = imagesc(us.scan, zeros(us.scan.size), [-50 0]);
-    colorbar;
-    colormap gray;
+    if kwargs.display
+        figure("Name","Custom Processing", "Visible", vs);
+        him = imagesc(us.scan, b ./ max(b), [-50 0]);
+        colorbar;
+        colormap gray;
+    end
     
     % save
     chd0 = chd;
-    disp("done!")
+    if kwargs.verbose, disp("done!"); end
 end
 
 % process data
-if TOGGLE_RFDataProc
+if ~isempty(conf) || TOGGLE_RFDataProc
     % load data
     L = chd0.T*chd0.M;
     chd0.data(:) = RData(1:L,:);
@@ -68,7 +84,9 @@ if TOGGLE_RFDataProc
     
     % display
     bim = (mod2db(sum(b(:,:,:),3))); % TODO: handle frames better
+    if kwargs.display
     him.CData(:) = gather(bim - max(bim,[],'all')); % normalize to peak
+    end
 end
 return
 end
