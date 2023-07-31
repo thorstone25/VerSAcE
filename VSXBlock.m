@@ -121,7 +121,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             end
 
             % remove extra *Frm argument
-            Recon = rmfield(Recon, ["IntBufDestFrm", "ImgBufDestFrm"]);
+	    if ~isempty(Recon), Recon = rmfield(Recon, ["IntBufDestFrm", "ImgBufDestFrm"]); end
 
     	    % assign indices for ReconInfo
     	    for i = 1:numel(vReconInfo)
@@ -198,8 +198,14 @@ classdef VSXBlock < matlab.mixin.Copyable
             vals = {Event, TX, Receive, Recon, ReconInfo, Process, SeqControl, TW, Resource, PData, TGC, UI};
             args = [nms; vals];
             vStruct = struct(args{:});
-            
-            % remove empty structures
+           
+            % convert some logicals to double
+	    [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
+	    if ~isempty(ReconInfo), [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync ); end
+	    [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
+	    [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
+
+	    % remove empty structures
             for f = string(fieldnames(vStruct))'
                 if isempty(vStruct.(f))
                     vStruct = rmfield(vStruct, f);
@@ -208,13 +214,6 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % convert all strings to char
             vStruct = recursiveString2Char(vStruct);
-
-            % convert some logicals to double
-            [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
-            [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync );
-            [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
-            [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
-            
 
             % clear nan values from TX struct
             for f = ["focus", "Steer", "FocalPt"]

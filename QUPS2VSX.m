@@ -80,7 +80,7 @@ vTW = computeTWWaveform(kwargs.vTW, vTrans, vResource); % fill out the waveform
 fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies
 
 % decimation frequency as per sampleMode
-if kwargs.sample_mode == "NS200BW"
+if     kwargs.sample_mode == "NS200BW"
     fs_decim = fs_available(find(fs_available >= 4 * vTrans.frequency, 1)); 
 elseif kwargs.sample_mode == "BS100BW"
     fs_decim = fs_available(find(fs_available >= 2 * vTrans.frequency, 1));
@@ -213,7 +213,7 @@ if kwargs.recon_custom
     if isempty(recon_event), vPData = VSXPData.empty; 
     else, vPData = recon_event.recon.pdatanum; % reuse PData
     end
-    [vUI(end+1), vev_post(end+1:2)] = addCustomRecon(scan, vResource, vbuf_rx, vPData, no_operation);
+    [vUI(end+1), vev_post(end+(1:2))] = addCustomRecon(scan, vResource, vbuf_rx, vPData, no_operation);
 end
 
 % custom saving process and ui
@@ -234,7 +234,7 @@ vBlock = VSXBlock('capture', vEvent, 'post', vev_post, 'next', vEvent(1), 'vUI',
 
 %% Create a template ChannelData object
 % TODO: call computeTWWaveform to get TW.peak correction
-t0l = 2 * vTrans.lensCorrection; % lens correction in wavelengths
+t0l = - 2 * vTrans.lensCorrection; % lens correction in wavelengths
 t0p = - vTW.peak; % peak correction in wavelengths
 x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'single');
 chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
@@ -289,7 +289,7 @@ vPData.Region = computeRegions(struct(vPData));
 
 %% Make Buffers
 % if inter(mediate) buffers needed, create one
-if any(contains([vReconInfo.mode], "IQ"))
+if true || any(contains([vReconInfo.mode], "IQ"))
     % get required number of pages
     if any(contains([vReconInfo.mode], "pages"))
         P = vResource.Parameters.numRcvChannels; % for page acquisitions, each page is a receive channel
@@ -375,6 +375,7 @@ end
 if isempty(vPData), vPData = VSXPData.QUPS(scan); end
 
 % Image buffer
+vbuf_inter = VSXInterBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames); 
 vbuf_im = VSXImageBuffer.fromPData(vPData);
 
 % Display window
@@ -391,9 +392,10 @@ compute_image_process = VSXProcess('classname', 'External', 'method', nm);
 compute_image_process.Parameters = {
     'srcbuffer','receive',...
     'srcbufnum', vbuf_rx,...
-    'srcframenum',0,...
+    'srcframenum',0,... 0 for all frames
     'dstbuffer','image', ...
     'dstbufnum', vbuf_im, ...
+    'dstframenum', -1,... -1 for last frame
     };
 
 display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
@@ -416,12 +418,11 @@ display_image_process.Parameters = { ...
     'displayWindow', vDisplayWindow ...
     };
 
-
-
 % Event
 vEvent = VSXEvent(...
     'info', 'QUPS Recon', ...
-    'process', compute_image_process ...
+    'process', compute_image_process, ...
+    'seqControl', vSeq ...
     );
 
 vEvent(2) = VSXEvent(...
@@ -439,6 +440,7 @@ vUI = VSXUI( ...
 
 %% Add to required Resource buffer
 if ~isempty(vbuf_im       ), vResource.ImageBuffer(end+1)    = vbuf_im       ; end
+if ~isempty(vbuf_inter    ), vResource.InterBuffer(end+1)    = vbuf_inter    ; end
 if ~isempty(vDisplayWindow), vResource.DisplayWindow(end+1)  = vDisplayWindow; end
 
 function [vUI, vEvent] = addCustomDelayRecon(vbuf_rx, vSeq)

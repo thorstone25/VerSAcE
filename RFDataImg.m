@@ -43,10 +43,6 @@ if ~isempty(conf) || ( true ... either post-processing or triggered and
     % HACK: check if hadamard transmit
     isHadamard = isequal(us.seq.apodization(us.xdc), hadamard(us.xdc.numel));
 
-    % adjust scan to start at 2mm
-    us.scan = copy(us.scan); 
-    us.scan.z = us.scan.z + 2e-3;
-    
     % allocate data
     chd = (singleT(chd)); % typing
     chd.data(:,:,:,:,1) = 0; % pre-allocation hack
