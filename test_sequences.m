@@ -24,11 +24,14 @@ xdc_name = "L11-5v"; % choose transducer
 % create VSX objects
 % constant resources
 vres = VSXResource(); % system-wide resource
-Trans = computeTrans(struct("name", xdc_name, 'units', 'mm')); % transducer
+Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
 vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
 
 % make blocks
-[vb, chd] = QUPS2VSX(us, Trans, vres, "frames", 1, 'vTW', vTW); % make VSX block
+[vb, chd] = QUPS2VSX(us, Trans, vres, "frames", 1, 'vTW', vTW, ...
+    'recon_VSX', true, 'recon_custom', false, ...
+    'recon_custom_delays', false, 'saver_custom', false ...
+    ); % make VSX block
 % [vb(1), chd(1)] = QUPS2VSX(uss(1), Trans, vres, "frames", 1, 'vTW', vTW); % make VSX block
 % [vb(2), chd(2)] = QUPS2VSX(uss(2), Trans, vres, "frames", 4, 'vTW', vTW); % make VSX block
 % [vb.next] = deal(vb(2).capture(1), vb(1).capture(1)); % start at beginning of alternate sequence
