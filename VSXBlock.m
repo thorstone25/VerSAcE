@@ -125,7 +125,7 @@ classdef VSXBlock < matlab.mixin.Copyable
 
     	    % assign indices for ReconInfo
     	    for i = 1:numel(vReconInfo)
-                ReconInfo(i).txnum  = safeIsMember([vReconInfo(i).txnum] , vTx);
+                ReconInfo(i).txnum  = safeIsMember([vReconInfo(i).txnum ], vTx );
                 ReconInfo(i).rcvnum = safeIsMember([vReconInfo(i).rcvnum], vRcv);
         		% TODO: add regionnum property vs. VSXRegion
         		if isempty(ReconInfo(i).regionnum)
@@ -134,6 +134,11 @@ classdef VSXBlock < matlab.mixin.Copyable
     	    end
 
             %% Parse special arguments
+            % TW - Remove unused properties
+            if all(cellfun(@isempty, {TW.VDASArbwave}))
+                TW = rmfield(TW, 'VDASArbwave');
+            end
+
             % SeqControl
             for i = 1:numel(SeqControl)
                 % link the index for jump commands
