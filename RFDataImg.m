@@ -17,7 +17,7 @@ if isempty(TOGGLE_RFDataImg), TOGGLE_RFDataImg = false; end
 
 % load data and pre-allocate outputs the first time
 if ~isempty(conf) || ( true ... either post-processing or triggered and
-    && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))) % if conf or image not initialized ...
+    && (isempty(us) || isempty(chd0))) % if conf or image not initialized ...
     if kwargs.verbose, disp("Initializing ... "); end
     
     % init system config and data
@@ -76,8 +76,7 @@ if ~isempty(conf) || TOGGLE_RFDataImg
     b   = DAS(us, chd, 'apod', a);
     
     % display
-    bim = mod2db(sum(b(:,:,:),3)); % TODO: handle frames better
-    bim = gather(double(bim - max(bim,[],'all','omitnan')));
+    bim = gather(double(abs(sum(b(:,:,:),3)))); % TODO: handle frames better
 else
     bim = zeros(us.scan.size);
 end
