@@ -1,4 +1,4 @@
-function [vBlock, vPData, vTrans, vUI, chd] = QUPS2VSX(us, xdc, vResource, kwargs)
+function [vBlock, chd, vTrans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % QUPS2VSX - Verasonics structure converter
 %
 % [vBlock, vPData, vTrans] = QUPS2VSX(us) converts the UltrasoundSystem us
@@ -36,7 +36,7 @@ warning_state = warning('off', 'MATLAB:structOnObject');
 
 % init
 vUI     = reshape(VSXUI.empty   , [1 0]);
-vPData  = reshape(VSXPData.empty, [1 0]);
+% vPData  = reshape(VSXPData.empty, [1 0]);
 
 %% Trans
 % set sound speed
@@ -160,8 +160,8 @@ for f = 1:kwargs.frames
 end
 
 %% SeqControl
-t_puls = round(T / fs_decim) + 50; % pulse wait time
-t_frm = t_puls*us.seq.numPulse*1.2; % frame wait time
+t_puls = round(T / fs_decim) + 50; % pulse wait time in usec
+t_frm = t_puls*us.seq.numPulse*1.2; % frame wait time in usec
 wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
 wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_frm ); % max TTNA is 4190000
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
@@ -185,40 +185,43 @@ end
 % make recon image and return to MATLAB
 if kwargs.recon_VSX
     return_to_matlab = VSXSeqControl('command', 'returnToMatlab');
-    [vEvent(end+1,:), vPData(end+1)] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, kwargs.frames);
+    [recon_event] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, 'multipage', false, 'numFrames', kwargs.frames);
+    recon_event.recon.newFrameTimeout = 50 * 1e-3*wait_for_pulse_sequence.argument; % wait time in msec ~ heuristic is approx 50 x acquisition time
+    vEvent(end+1,:) = recon_event; % assign to end of TX-loop
     vEvent(end,:) = copy(vEvent(end,:)); % copy to make unique Events for each frame
 end
 
 %% Add Events at the end of the loop
 % vectorize
-vEvent = vEvent(:);
+vev_post = reshape(VSXEvent.empty, [1,0]);
 
 % custom reconstruction process and ui
 if kwargs.recon_custom
-    [vUI(end+1), vEvent(end+1)] = addCustomRecon(vbuf_rx, no_operation);
+    [vUI(end+1), vev_post(end+1)] = addCustomRecon(vbuf_rx, no_operation);
 end
 
 % custom saving process and ui
 if kwargs.saver_custom
-    [vUI(end+1), vEvent(end+1)] = addCustomSaver(vbuf_rx, no_operation);
+    [vUI(end+1), vev_post(end+1)] = addCustomSaver(vbuf_rx, no_operation);
 end
 
 % return to start of block after all Events
 % TODO: add option for what to do after the end of all events
-vEvent(end+1) = VSXEvent('info', 'Jump back', 'seqControl', ...
-    VSXSeqControl('command', 'jump', 'argument', vEvent(1)) ...
-    );
+% vEvent(end+1) = VSXEvent('info', 'Jump back', 'seqControl', ...
+%     VSXSeqControl('command', 'jump', 'argument', vEvent(1)) ...
+%     );
 
 % ---------- Events ------------- %
 
 %% Block
-vBlock = VSXBlock('vsxevent', vEvent);
+vBlock = VSXBlock('capture', vEvent, 'post', vev_post, 'next', vEvent(1), 'vUI', vUI);
 
 %% Create a template ChannelData object
 % TODO: call computeTWWaveform to get TW.peak correction
 t0l = 2 * vTrans.lensCorrection; % lens correction in wavelengths
+t0p = - kwargs.vTW.peak; % peak correction in wavelengths
 x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'single');
-chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l)./xdc.fc, 'order', 'TMNF');
+chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
 
 %% added External Functions/Callback
 % restore warning state
@@ -227,56 +230,81 @@ warning(warning_state);
 % done!
 return; 
 
-function [vEvent, vPData] = addVSXRecon(scan, vResource, vTX, vRcv, vSeq, frames)
+function [vEvent, vPData] = addVSXRecon(scan, vResource, vTX, vRcv, vSeq, kwargs)
 arguments
     scan Scan
     vResource VSXResource
     vTX VSXTX
     vRcv VSXReceive
     vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
-    frames (1,1) double = 1
+    kwargs.numFrames (1,1) double = 1
+    kwargs.multipage (1,1) logical = false
+    kwargs.display (1,1) logical = true
 end
-%% PData
-% create the pixel data
-vPData = VSXPData.QUPS(scan);
-
-% create a default region for each transmit
-% TODO: VSXRegion
-vPData.Region = repmat(struct('Shape', struct('Name','Custom'), 'PixelsLA', int32(0:scan.nPix-1), 'numPixels', scan.nPix), size(vTX));
-
-% fill out the regions
-vPData.Region = computeRegions(struct(vPData));
-
-vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
-    'Title', 'VSX Beamformer', ...
-    'numFrames', frames, ...
-    'AxesUnits', 'mm', ...
-    'Colormap', gray(256) ...
-);
-
-vbuf_inter = VSXInterBuffer('numFrames', frames);
-vbuf_im    = VSXImageBuffer('numFrames', frames);
-
-%% Recon
-vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vbuf_im);
-
-% Define ReconInfo structures.
+%% ReconInfo
 % We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vPData.Region)));  % default is to accumulate IQ data.
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vTX)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
 for j = 1:numel(vReconInfo) % For each reconinfo object
     vReconInfo(j).txnum  = vTX( j); % tx
     vReconInfo(j).rcvnum = vRcv(j); % rx
-    vReconInfo(j).regionnum = j; % TODO: VSXRegion
+    vReconInfo(j).regionnum = j; % region index TODO: VSXRegion
+    if kwargs.multipage
+        vReconInfo(j).pagenum = j; % page number
+    end
 end
 vReconInfo( 1 ).mode = 'replaceIQ'; % on first tx, replace IQ data
 vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % on last tx, accum and "detect"
 
 if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx
 
-% associate the reconinfo
-vRecon.RINums = vReconInfo;
+%% PData
+% create the pixel data
+vPData = VSXPData.QUPS(scan);
+
+% create a default region for each transmit
+% TODO: VSXRegion
+vPData.Region = repmat(struct('Shape', struct('Name','Custom'), 'PixelsLA', int32(0:scan.nPix-1), 'numPixels', scan.nPix), size(vReconInfo));
+
+% fill out the regions
+% TODO: VSXRegion
+vPData.Region = computeRegions(struct(vPData));
+
+%% Make Buffers
+% if inter(mediate) buffers needed, create one
+if any(contains([vReconInfo.mode], "IQ"))
+    % get required number of pages
+    if any(contains([vReconInfo.mode], "pages"))
+        P = vResource.Parameters.numRcvChannels; % for page acquisitions, each page is a receive channel
+    else 
+        P = max([1, vReconInfo.pagenum]); % use max page number in reconinfo
+    end
+    
+    % make a buffer
+    vbuf_inter = VSXInterBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames, 'pagesPerFrame', P); 
+else
+    vbuf_inter = VSXInterBuffer.empty; % no buffer
+end
+
+% if image buffers needed, create one
+if any(contains([vReconInfo.mode], "Intensity"))
+    vbuf_im = VSXImageBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames);
+else
+    vbuf_im = VSXImageBuffer.empty; % no buffer
+end
+
+%% Recon
+vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vbuf_im, "RINums", vReconInfo);
+
+%% Display window
+if kwargs.display
+vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
+    'Title', 'VSX Beamformer', ...
+    'numFrames', kwargs.numFrames, ...
+    'AxesUnits', 'mm', ...
+    'Colormap', gray(256) ...
+);
 
 %% Process
 display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
@@ -306,11 +334,14 @@ vEvent = VSXEvent(...
     'process', display_image_process, ...
     'seqControl', vSeq ...
     );
+else
+    vEvent = VSXEvent.empty;
+end
 
 %% Add to required Resource buffer
-vResource.InterBuffer(end+1)    = vbuf_inter;
-vResource.ImageBuffer(end+1)    = vbuf_im;
-vResource.DisplayWindow(end+1)  = vDisplayWindow;
+if ~isempty(vbuf_inter    ), vResource.InterBuffer(end+1)    = vbuf_inter    ; end
+if ~isempty(vbuf_im       ), vResource.ImageBuffer(end+1)    = vbuf_im       ; end
+if ~isempty(vDisplayWindow), vResource.DisplayWindow(end+1)  = vDisplayWindow; end
 
 
 function [vUI, vEvent] = addCustomRecon(vbuf_rx, vSeq)

@@ -16,20 +16,40 @@ uss = copy(repmat(uss, [1,3]));
 [uss.seq] = deal(seqfsa, seqpw, seqfc);
 
 %%
-vres = VSXResource();
-xdc_name = "L11-5v";
-us = copy(uss(2)); % just 1 selection for now
-[vb, vp, Trans, vu, chd] = QUPS2VSX(us, xdc_name, vres, "frames", 1); % make block
-vs = link(vb, vres, vp, vu); % link
+% selection
+% us = copy(uss(2)); % choose pulse sequence template
+xdc_name = "L11-5v"; % choose transducer
+
+% create VSX objects
+% constant resources
+vres = VSXResource(); % system-wide resource
+Trans = computeTrans(struct("name", xdc_name, 'units', 'mm')); % transducer
+vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
+[vTW, Trans] = computeTWWaveform(vTW, Trans, vres); % fill out the waveform
+
+% make blocks
+[vb(1), chd(1)] = QUPS2VSX(uss(1), Trans, vres, "frames", 1, 'vTW', vTW); % make VSX block
+[vb(2), chd(2)] = QUPS2VSX(uss(2), Trans, vres, "frames", 4, 'vTW', vTW); % make VSX block
+[vb.next] = deal(vb(2).capture(1), vb(1).capture(1)); % start at beginning of alternate sequence
+
+% DEBUG: test the manual receive delays
+for i = 1:numel(chd)
+    [~, tau_rx, tau_tx] = bfDAS(uss(i), chd, 'delay_only', true);
+    vRecon = unique([vb(i).capture.recon]); % find Recon (exactly 1 exists)
+    setVSXLUT(vRecon, tau_rx, tau_tx + swapdim(chd(i).t0,chd(i).mdim,5), uss(i).xdc.fc);
+end
+
+% convert to VSX structures
+vs = link(vb, vres); % link
 vs.Trans = Trans; % add Trans
 pt1; vs.Media = Media; % add simulation media
 
+% DEBUG: test the manual receive delays
+% [~, tau_rx, tau_tx] = bfDAS(us, chd, 'delay_only', true);
+% [vs.Recon, vs.ReconInfo] = setVSXLUT(vs.Recon, vs.ReconInfo, vs.PData, tau_rx, tau_tx + swapdim(chd.t0,chd.mdim,5), us.xdc.fc);
+
 % force in simulation mode for testing
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
-
-% DEBUG: test the manual receive delays
-[~, tau_rx, tau_tx] = bfDAS(us, chd, 'delay_only', true);
-[vs.Recon, vs.ReconInfo] = setVSXLUT(vs.Recon, vs.ReconInfo, vs.PData, tau_rx, tau_tx + swapdim(chd.t0,chd.mdim,5), us.xdc.fc);
 
 % save 
 filename = char(fullfile("MatFiles","qups-vsx.mat")); 

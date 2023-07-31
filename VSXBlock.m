@@ -1,6 +1,9 @@
 classdef VSXBlock < matlab.mixin.Copyable
     properties
-        vsxevent (1,:) VSXEvent
+        capture VSXEvent % data capture events
+        post (1,:) VSXEvent = VSXEvent.empty % post-processing events
+        next {mustBeScalarOrEmpty} = VSXEvent.empty % event to jump to after loop
+        vUI VSXUI = VSXUI.empty % UI events
     end
     methods
         function obj = VSXBlock(kwargs)
@@ -9,34 +12,44 @@ classdef VSXBlock < matlab.mixin.Copyable
                 obj.(f) = kwargs.(f);
             end
         end
-        function vStruct = link(self, vResource, vPData, vUI)
+        function vStruct = link(vblock, vResource)
             arguments
-            self VSXBlock
+            vblock VSXBlock
             vResource (1,1) VSXResource = VSXResource(); % default resource
-            vPData VSXPData = VSXPData.empty
-            vUI VSXUI = VSXUI.empty
         end
             
             % squash obj to struct warning
             warning_state = warning('off', 'MATLAB:structOnObject');
 
+            % identify which block each "next" value belongs to if any
+            for i = numel(vblock):-1:1
+                for j = numel(vblock):-1:1
+                    if ismember(vblock(i).next, vblock(j).capture)
+                        blkid{i} = j; break;
+                    end
+                end
+            end
+
+            % get the sequence of events, in order
+            vEvent = arrayfun(@(vb, i) {[vb.capture(:); vb.post(:); jump2event(vb.next, i{1})]'}, vblock, blkid); % order as capture, post, jump2next(next_event)
+            vEvent = [vEvent{:}]; 
+
             %% get arrays of all properties
-            vEvent              = unique([self.vsxevent]    , 'stable'); % all events
-            vTx                 = unique([vEvent.tx]        , 'stable'); 
-            vRcv                = unique([vEvent.rcv]       , 'stable');
-            vRecon              = unique([vEvent.recon]     , 'stable');
-            vReconInfo          = unique([vRecon.RINums]    , 'stable');
-            vProcess            = unique([vEvent.process]   , 'stable');
-            vSeqControl         = unique([vEvent.seqControl], 'stable');
-            vTw                 = unique([vTx.waveform]     , 'stable');
-            vTGC                = unique([vRcv.TGC]         , 'stable');
+            vTx             = unique([vEvent.tx]        , 'stable'); 
+            vRcv            = unique([vEvent.rcv]       , 'stable');
+            vRecon          = unique([vEvent.recon]     , 'stable');
+            vReconInfo      = unique([vRecon.RINums]    , 'stable');
+            vProcess        = unique([vEvent.process]   , 'stable');
+            vSeqControl     = unique([vEvent.seqControl], 'stable');
+            vTw             = unique([vTx.waveform]     , 'stable');
+            vTGC            = unique([vRcv.TGC]         , 'stable');
+            vUI             = unique([vblock.vUI]       , 'stable'); %#ok<PROPLC> 
             
-            % is this necessary?
-            vDisplayWindow = unique([vResource.DisplayWindow], 'stable');
-            vRcvBuffer     = unique([vResource.RcvBuffer    ], 'stable');
-            vInterBuffer   = unique([vResource.InterBuffer  ], 'stable');
-            vImageBuffer   = unique([vResource.ImageBuffer  ], 'stable');
-            vParameters    = unique([vResource.Parameters   ], 'stable');
+            vDisplayWindow  = unique([vResource.DisplayWindow], 'stable');
+            vRcvBuffer      = unique([vResource.RcvBuffer    ], 'stable');
+            vInterBuffer    = unique([vResource.InterBuffer  ], 'stable');
+            vImageBuffer    = unique([vResource.ImageBuffer  ], 'stable');
+            vParameters     = unique([vResource.Parameters   ], 'stable');
 
             % PData can be referenced in the Parameters field of a Process 
             % (Image or Doppler specifically, if it exists) or in the Recon
@@ -58,7 +71,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             Resource    = arrayfun(@struct, vResource);
             PData       = arrayfun(@struct, vPData);
             TGC         = arrayfun(@struct, vTGC);
-            UI          = arrayfun(@struct, vUI);
+            UI          = arrayfun(@struct, vUI); %#ok<PROPLC> 
             
             % 
             Resource.DisplayWindow  = arrayfun(@struct, vDisplayWindow);
@@ -103,6 +116,8 @@ classdef VSXBlock < matlab.mixin.Copyable
                 Recon(i).pdatanum = safeIsMember([vRecon(i).pdatanum], vPData);
                 Recon(i).IntBufDest = [safeIsMember([vRecon(i).IntBufDest], vInterBuffer), vRecon(i).IntBufDestFrm];
                 Recon(i).ImgBufDest = [safeIsMember([vRecon(i).ImgBufDest], vImageBuffer), vRecon(i).ImgBufDestFrm];
+                if ~Recon(i).IntBufDest(1), Recon(i).IntBufDest = []; end % remove if no buffer specified
+                if ~Recon(i).ImgBufDest(1), Recon(i).ImgBufDest = []; end % remove if no buffer specified
             end
 
             % remove extra *Frm argument
@@ -232,10 +247,18 @@ elseif iscell(x) % cell container
 elseif isstring(x)
     y = char(x);
     if xor(isempty(x), isempty(y))
-        error("VSX-OOD:VSXBlock:string2charEmptiness", "String and char emptiness not identical - use string.empty not """" for an empty string.");
+        error("VSXOOD:VSXBlock:string2charEmptiness", "String and char emptiness not identical - use string.empty not """" for an empty string.");
     end
 else
     % do nothing
 end
 end
 
+function vEvent = jump2event(vEvent, i)
+arguments, vEvent {mustBeScalarOrEmpty}, i (1,:) double = []; end
+if isscalar(vEvent)
+vEvent = VSXEvent('info', "Jump to " + vEvent.info + (" of block " + i), 'seqControl', ...
+    VSXSeqControl('command', 'jump', 'argument', vEvent) ...
+    );
+end
+end
