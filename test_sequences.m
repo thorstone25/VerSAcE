@@ -17,7 +17,8 @@ uss = copy(repmat(uss, [1,3]));
 
 %%
 % selection
-% us = copy(uss(2)); % choose pulse sequence template
+seq_ind = 2;
+us = copy(uss(seq_ind)); % choose pulse sequence template
 xdc_name = "L11-5v"; % choose transducer
 
 % create VSX objects
@@ -25,18 +26,18 @@ xdc_name = "L11-5v"; % choose transducer
 vres = VSXResource(); % system-wide resource
 Trans = computeTrans(struct("name", xdc_name, 'units', 'mm')); % transducer
 vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
-[vTW, Trans] = computeTWWaveform(vTW, Trans, vres); % fill out the waveform
 
 % make blocks
-[vb(1), chd(1)] = QUPS2VSX(uss(1), Trans, vres, "frames", 1, 'vTW', vTW); % make VSX block
-[vb(2), chd(2)] = QUPS2VSX(uss(2), Trans, vres, "frames", 4, 'vTW', vTW); % make VSX block
-[vb.next] = deal(vb(2).capture(1), vb(1).capture(1)); % start at beginning of alternate sequence
+[vb, chd] = QUPS2VSX(us, Trans, vres, "frames", 1, 'vTW', vTW); % make VSX block
+% [vb(1), chd(1)] = QUPS2VSX(uss(1), Trans, vres, "frames", 1, 'vTW', vTW); % make VSX block
+% [vb(2), chd(2)] = QUPS2VSX(uss(2), Trans, vres, "frames", 4, 'vTW', vTW); % make VSX block
+% [vb.next] = deal(vb(2).capture(1), vb(1).capture(1)); % start at beginning of alternate sequence
 
 % DEBUG: test the manual receive delays
-for i = 1:numel(chd)
-    [~, tau_rx, tau_tx] = bfDAS(uss(i), chd, 'delay_only', true);
+for i = 1:numel(seq_ind)
+    [~, tau_rx, tau_tx] = bfDAS(uss(seq_ind(i)), chd(i), 'delay_only', true);
     vRecon = unique([vb(i).capture.recon]); % find Recon (exactly 1 exists)
-    setVSXLUT(vRecon, tau_rx, tau_tx + swapdim(chd(i).t0,chd(i).mdim,5), uss(i).xdc.fc);
+    setVSXLUT(vRecon, tau_rx, tau_tx + swapdim(chd(i).t0,chd(i).mdim,5), uss(seq_ind(i)).xdc.fc);
 end
 
 % convert to VSX structures
