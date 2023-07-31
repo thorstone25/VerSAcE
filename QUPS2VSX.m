@@ -28,6 +28,7 @@ arguments
     kwargs.custom_fs (1,1) double
     kwargs.recon_VSX (1,1) logical = true
     kwargs.recon_custom (1,1) logical = true
+    kwargs.recon_custom_delays (1,1) logical = false
     kwargs.saver_custom (1,1) logical = true
 end
 
@@ -70,6 +71,11 @@ scan = scale(us.scan, 'dist', 1./lambda);
 dnear = floor(2 * scan.zb(1)); % nearest distance (2-way)
 dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-way)
 
+%% TW
+% TODO: include TPC
+% TODO: handle return of Trans
+vTW = computeTWWaveform(kwargs.vTW, vTrans, vResource); % fill out the waveform
+
 %% Allocate buffers and Set Parameters
 fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies
 
@@ -101,7 +107,7 @@ vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
 vResource.RcvBuffer(end+1)   = vbuf_rx;
 
 %% TX
-vTX = copy(repmat(VSXTX('waveform', kwargs.vTW), [1, us.seq.numPulse]));
+vTX = copy(repmat(VSXTX('waveform', vTW), [1, us.seq.numPulse]));
 
 % get delay and apodization matrices
 delay = - us.seq.delays(xdc) * xdc.fc;
@@ -189,15 +195,25 @@ if kwargs.recon_VSX
     recon_event.recon.newFrameTimeout = 50 * 1e-3*wait_for_pulse_sequence.argument; % wait time in msec ~ heuristic is approx 50 x acquisition time
     vEvent(end+1,:) = recon_event; % assign to end of TX-loop
     vEvent(end,:) = copy(vEvent(end,:)); % copy to make unique Events for each frame
+else
+    recon_event = VSXEvent.empty;
 end
 
 %% Add Events at the end of the loop
 % vectorize
 vev_post = reshape(VSXEvent.empty, [1,0]);
 
-% custom reconstruction process and ui
+% custom delays reconstruction process and ui
+if kwargs.recon_custom_delays
+    [vUI(end+1), vev_post(end+1)] = addCustomDelayRecon(vbuf_rx, no_operation);
+end
+
+% custom beamformer reconstruction process and ui
 if kwargs.recon_custom
-    [vUI(end+1), vev_post(end+1)] = addCustomRecon(vbuf_rx, no_operation);
+    if isempty(recon_event), vPData = VSXPData.empty; 
+    else, vPData = recon_event.recon.pdatanum; % reuse PData
+    end
+    [vUI(end+1), vev_post(end+1)] = addCustomRecon(scan, vResource, vbuf_rx, vPData, no_operation);
 end
 
 % custom saving process and ui
@@ -219,7 +235,7 @@ vBlock = VSXBlock('capture', vEvent, 'post', vev_post, 'next', vEvent(1), 'vUI',
 %% Create a template ChannelData object
 % TODO: call computeTWWaveform to get TW.peak correction
 t0l = 2 * vTrans.lensCorrection; % lens correction in wavelengths
-t0p = - kwargs.vTW.peak; % peak correction in wavelengths
+t0p = - vTW.peak; % peak correction in wavelengths
 x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'single');
 chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
 
@@ -299,41 +315,41 @@ vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vb
 
 %% Display window
 if kwargs.display
-vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
-    'Title', 'VSX Beamformer', ...
-    'numFrames', kwargs.numFrames, ...
-    'AxesUnits', 'mm', ...
-    'Colormap', gray(256) ...
-);
+    vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
+        'Title', 'VSX Beamformer', ...
+        'numFrames', kwargs.numFrames, ...
+        'AxesUnits', 'mm', ...
+        'Colormap', gray(256) ...
+        );
 
-%% Process
-display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
-display_image_process.Parameters = {
-    'imgbufnum', vbuf_im,...   % number of buffer to process.
-    'framenum',-1,...   % (-1 => lastFrame)
-    'pdatanum', vPData,...    % PData structure to use
-    'pgain',1.0,...            % pgain is image processing gain
-    'reject',2,...      % reject level
-    'persistMethod','simple',...
-    'persistLevel',20,...
-    'interpMethod','4pt',...
-    'grainRemoval','none',...
-    'processMethod','none',...
-    'averageMethod','none',...
-    'compressMethod','power',...
-    'compressFactor',40,...
-    'mappingMethod','full',...
-    'display',1,...      % display image after processing
-    'displayWindow', vDisplayWindow, ...
-    }; 
+    %% Process
+    display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
+    display_image_process.Parameters = {
+        'imgbufnum', vbuf_im,...   % number of buffer to process.
+        'framenum',-1,...   % (-1 => lastFrame)
+        'pdatanum', vPData,...    % PData structure to use
+        'pgain',1.0,...            % pgain is image processing gain
+        'reject',2,...      % reject level
+        'persistMethod','simple',...
+        'persistLevel',20,...
+        'interpMethod','4pt',...
+        'grainRemoval','none',...
+        'processMethod','none',...
+        'averageMethod','none',...
+        'compressMethod','power',...
+        'compressFactor',40,...
+        'mappingMethod','full',...
+        'display',1,...      % display image after processing
+        'displayWindow', vDisplayWindow, ...
+        };
 
-%% Event
-vEvent = VSXEvent(...
-    'info', 'recon and process', ...
-    'recon', vRecon, ...
-    'process', display_image_process, ...
-    'seqControl', vSeq ...
-    );
+    %% Event
+    vEvent = VSXEvent(...
+        'info', 'VSX Recon', ...
+        'recon', vRecon, ...
+        'process', display_image_process, ...
+        'seqControl', vSeq ...
+        );
 else
     vEvent = VSXEvent.empty;
 end
@@ -343,8 +359,64 @@ if ~isempty(vbuf_inter    ), vResource.InterBuffer(end+1)    = vbuf_inter    ; e
 if ~isempty(vbuf_im       ), vResource.ImageBuffer(end+1)    = vbuf_im       ; end
 if ~isempty(vDisplayWindow), vResource.DisplayWindow(end+1)  = vDisplayWindow; end
 
+function [vUI, vEvent] = addCustomRecon(scan, vResource, vbuf_rx, vPData, vSeq, kwargs)
+arguments
+    scan Scan
+    vResource VSXResource
+    vbuf_rx (1,1) VSXRcvBuffer
+    vPData {mustBeScalarOrEmpty} = VSXPData.empty
+    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
+    kwargs.numFrames (1,1) double = 1
+    kwargs.multipage (1,1) logical = false
+    kwargs.display (1,1) logical = true
+end
 
-function [vUI, vEvent] = addCustomRecon(vbuf_rx, vSeq)
+% PData
+if isempty(vPData), vPData = VSXPData.QUPS(scan); end
+
+% Image buffer
+vbuf_im = VSXImageBuffer.fromPData(vPData);
+
+% Display window
+vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
+    'Title', 'QUPS Recon', ...
+    'numFrames', kwargs.numFrames, ...
+    'AxesUnits', 'mm', ...
+    'Colormap', gray(256) ...
+    );
+
+% Process
+nm = "RFDataImg"; % function name
+display_image_process = VSXProcess('classname', 'External', 'method', nm);
+display_image_process.Parameters = {
+    'srcbuffer','receive',...
+    'srcbufnum', vbuf_rx,...
+    'srcframenum',0,...
+    'dstbuffer','image', ...
+    'dstbufnum', vbuf_im, ...
+    };
+
+% Event
+vEvent = VSXEvent(...
+    'info', 'QUPS Recon', ...
+    'process', display_image_process, ...
+    'seqControl', vSeq ...
+    );
+
+% UI
+vUI = VSXUI( ...
+    'Control', {'UserB3','Style','VsToggleButton','Label', 'Image RFData', 'Callback', str2func("do"+nm)}, ...
+    'Statement', cellstr(["global TOGGLE_"+nm+"; TOGGLE_"+nm+" = false; return;"]), ... init
+    'Callback', cellstr(["do"+nm+"(varargin)", "global TOGGLE_"+nm+"RFDataImg; TOGGLE_"+nm+" = logical(UIState); return;"]) ...
+    );
+
+%% Add to required Resource buffer
+if ~isempty(vbuf_im       ), vResource.ImageBuffer(end+1)    = vbuf_im       ; end
+if ~isempty(vDisplayWindow), vResource.DisplayWindow(end+1)  = vDisplayWindow; end
+
+
+
+function [vUI, vEvent] = addCustomDelayRecon(vbuf_rx, vSeq)
 arguments
     vbuf_rx (1,1) VSXRcvBuffer
     vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
@@ -364,7 +436,7 @@ vUI = VSXUI( ...
 );
 
 % process RF Data
-vEvent = VSXEvent('info', 'Process RF Data', 'process', proc_rf_data, 'seqControl', vSeq);                               
+vEvent = VSXEvent('info', 'Proc RF Data', 'process', proc_rf_data, 'seqControl', vSeq);                               
 
 function [vUI, vEvent] = addCustomSaver(vbuf_rx, vSeq)
 arguments
