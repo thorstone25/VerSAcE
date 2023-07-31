@@ -1,13 +1,16 @@
-function [Recon, ReconInfo] = setVSXLUT(Recon, ReconInfo, PData, tau_rx, tau_tx, fc, apod_tx)
+function setVSXLUT(Recon, tau_rx, tau_tx, fc, apod_tx)
 arguments
-    Recon (1,1) {mustBeA(Recon, ["struct", "VSXRecon"])}
-    ReconInfo (:,:) {mustBeA(ReconInfo, ["struct", "VSXReconInfo"])}
-    PData (1,1) {mustBeA(PData, ["struct", "VSXPData"])}
+    Recon (1,1) VSXRecon
     tau_rx (:,:,:,:,1) double % delays: elements x pixels (!!!!!)
     tau_tx (:,:,:,1,:) double % delays: pixels x tx
     fc double = 1; % transmit frequency
     apod_tx (:,:,:,1,:) double {mustBeInRange(apod_tx, -8388608, 8388608)} = ones(size(tau_tx)) % weights: pixels x tx % NOTE: this can clip
 end
+
+% unpack
+% Recon = [vb.capture.recon]; % 
+PData = Recon.pdatanum; % VSXPData
+ReconInfo = Recon.RINums; % VSXReconInfo
 
 M   =      size(tau_tx,5); % get sizing
 N   =      size(tau_rx,4);
