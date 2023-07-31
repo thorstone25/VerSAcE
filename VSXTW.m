@@ -8,18 +8,18 @@ classdef VSXTW < matlab.mixin.Copyable
             "function",...
             "sampled"])} = "parametric";
         States (:,2) double
-        TriLvlWvfm (:,1) double
+        TriLvlWvfm (:,1) double {mustBeMember(TriLvlWvfm, [-1, 0, 1])}
         Wvfm1Wy (:,1) double
         Wvfm2Wy (:,1) double
         peak (1,1) double
         numsamples (1,1) double 
         estimatedAvgFreq (1,1) double
         Bdur (1,1) double
-        sysExtendBL (1,1) double
+        sysExtendBL (1,1) double % true if more than 25 cycle pulse
         CumOnTime (1,1) double
         Numpulses (1,1) double {mustBeInteger}
         integralPkUsec (1,2) double
-        fluxHVLimit (1,1) double 
+        fluxHVlimit double {mustBeScalarOrEmpty} 
         VDASArbwave uint16
         perChWvfm (1,1) logical = false
         refchnum (1,1) double
@@ -29,7 +29,6 @@ classdef VSXTW < matlab.mixin.Copyable
         Zsource (1,1) double
         chIpk1V (1,1) double
         wvfmIntegral (1,1) double
-        fluxHVlimit (1,1) double
         simChNum double {mustBeInteger, mustBeScalarOrEmpty} = []
         Parameters (:,4) double = []
         equalize (1,1) {mustBeMember(equalize, [0 1 2])} = 1

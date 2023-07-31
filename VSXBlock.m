@@ -212,6 +212,9 @@ classdef VSXBlock < matlab.mixin.Copyable
             % convert some logicals to double
             [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
             [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync );
+            [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
+            [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
+            
 
             % clear nan values from TX struct
             for f = ["focus", "Steer", "FocalPt"]
