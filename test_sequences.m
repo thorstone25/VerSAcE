@@ -37,11 +37,14 @@ vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); %
 % [vb.next] = deal(vb(2).capture(1), vb(1).capture(1)); % start at beginning of alternate sequence
 
 % DEBUG: test the manual receive delays
+%{
 for i = 1:numel(seq_ind)
     [~, tau_rx, tau_tx] = bfDAS(uss(seq_ind(i)), chd(i), 'delay_only', true);
     vRecon = unique([vb(i).capture.recon]); % find Recon (exactly 1 exists)
-    setVSXLUT(vRecon, tau_rx, tau_tx + swapdim(chd(i).t0,chd(i).mdim,5), uss(seq_ind(i)).xdc.fc);
+    if ~isscalar(vRecon), continue; end
+    setVSXLUT(vRecon, tau_rx, tau_tx - swapdim(chd(i).t0,chd(i).mdim,5), uss(seq_ind(i)).xdc.fc);% broken for Vantage 4.3
 end
+%}
 
 % convert to VSX structures
 vs = link(vb, vres); % link
