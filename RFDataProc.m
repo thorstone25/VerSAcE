@@ -60,7 +60,7 @@ if ~isempty(conf) || (TOGGLE_RFDataProc ... either post-processing or triggered 
     
     % init display
     if kwargs.display
-        figure("Name","Custom Processing", "Visible", vs);
+        figure("Name","Custom Processing", "Visible", 'on');
         him = imagesc(us.scan, b ./ max(b), [-50 0]);
         colorbar;
         colormap gray;
@@ -85,7 +85,7 @@ if ~isempty(conf) || TOGGLE_RFDataProc
     % display
     bim = (mod2db(sum(b(:,:,:),3))); % TODO: handle frames better
     if kwargs.display
-    him.CData(:) = gather(bim - max(bim,[],'all')); % normalize to peak
+        him.CData(:) = gather(bim - max(bim,[],'all')); % normalize to peak
     end
 end
 return
