@@ -1,6 +1,6 @@
 classdef VSXEvent < matlab.mixin.Copyable
     properties
-        info (1,:) char
+        info (1,1) string = 'Event'
         tx VSXTX {mustBeScalarOrEmpty} = VSXTX.empty
         rcv VSXReceive {mustBeScalarOrEmpty} = VSXReceive.empty
         recon (1,:) VSXRecon = VSXRecon.empty
