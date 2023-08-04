@@ -1,51 +1,40 @@
-function chd = RFDataProc(RData, conf, kwargs)
-arguments
-    RData {mustBeNumeric}
-    conf struct {mustBeScalarOrEmpty} = struct.empty
-    kwargs.display (1,1) logical = true;
-    kwargs.verbose (1,1) logical = true;
-end
-
+function chd = RFDataProc(RData, TW, Receive)
 global TOGGLE_RFDataProc;
 persistent us chd0 D; % UltrasoundSystem, ChannelData, filter
 persistent him a; % image handle, apodization
 persistent b k PRE_ARGS POST_ARGS; % DAS arguments
-persistent isHadamard; % is a hadamard encoded transmit?
 
 % default to false, just in case
 if isempty(TOGGLE_RFDataProc), TOGGLE_RFDataProc = false; end
 
 % load data and pre-allocate outputs the first time
-if ~isempty(conf) || (TOGGLE_RFDataProc ... either post-processing or triggered and
-    && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))) % if conf or image not initialized ...
-    if kwargs.verbose, disp("Initializing ... "); end
+if TOGGLE_RFDataProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))
+    disp("Initializing ... ");
     
     % init system config and data
-    if all(isfield(conf, ["us", "chd"]))
-        dat = conf; % use input
-    else
-        dat = load("qups-conf.mat", "us", "chd"); % load classes
-    end
+    dat = load("qups-conf.mat", "us", "chd"); % load classes
     [us, chd] = deal(dat.us, dat.chd); % assign
 
-    % HACK: get from base when running live
-    % if ~isfield(conf, 'TW'), conf.TW = evalin('base', 'TW'); end
+    chd.data(:, :, :, :, 1) = chd.data;
     
-    % fix the start time for the pulse 
-    % chd.t0 = chd.t0 - conf.TW.peak ./ us.xdc.fc;
+    % downsampling
+    us.xdc.pitch = us.xdc.pitch / 2;
+    us.xdc.numel = us.xdc.numel / 2;
+    chd.data = chd.data(:, 1:2:end, 1:2:end, :, :);
+    chd.t0 = chd.t0(:, 1:2:end);
+    us.seq.numPulse = us.seq.numPulse / 2;
 
-    % fix the true buffer length
-    % if ~isfield(conf, 'Receive'), conf.Receive = evalin('base', 'Receive'); end
-    % sz = size(chd.data);
-    % sz(1) = mode([conf.Receive.endSample] - [conf.Receive.startSample] + 1);
-    % chd.data = zeros(sz, 'like', chd.data);
 
-    % HACK: check if hadamard transmit
-    isHadamard = isequal(us.seq.apodization(us.xdc), hadamard(us.xdc.numel));
-
-    % adjust scan to start at 2mm
-    us.scan = copy(us.scan); 
-    us.scan.z = us.scan.z + 2e-3;
+    % HACK: fix the start time for the pulse
+    if nargin < 2, TW = evalin('base', 'TW'); end
+%     [~,TW.peak] = computeTWWaveform(TW);
+%     chd.t0 = chd.t0 - TW.peak ./ us.xdc.fc;
+    
+    % HACK: fix the buffer length
+    if nargin < 3, Receive = evalin('base', 'Receive'); end
+    sz = size(chd.data);
+%     sz(1) = mode([Receive.endSample] - [Receive.startSample] + 1);
+    chd.data = zeros(sz, 'like', chd.data);
     
     % allocate data
     chd = (singleT(chd)); % typing
@@ -59,34 +48,31 @@ if ~isempty(conf) || (TOGGLE_RFDataProc ... either post-processing or triggered 
     [b, k, PRE_ARGS, POST_ARGS] = DAS(us, chd, 'apod', a);
     
     % init display
-    if kwargs.display
-        figure("Name","Custom Processing", "Visible", 'on');
-        him = imagesc(us.scan, b ./ max(b), [-50 0]);
-        colorbar;
-        colormap gray;
-    end
+    figure;
+    him = imagesc(us.scan, zeros(us.scan.size), [-50 0]);
+    colorbar;
+    colormap gray;
     
     % save
     chd0 = chd;
-    if kwargs.verbose, disp("done!"); end
+    disp("done!")
 end
 
 % process data
-if ~isempty(conf) || TOGGLE_RFDataProc
+if TOGGLE_RFDataProc
     % load data
     L = chd0.T*chd0.M;
-    chd0.data(:) = RData(1:L,:);
+    RData = reshape(RData(1:2:end, 1:2:end),[], 64, 64); % reshape rdata
+%     RData = permute(RData, [3, 1, 2]); % rearrange dimensions
+    chd0.data(:) = RData(1:3200, :);
     
     % process
     chd = (filter(hilbert(chd0),D));
-    if isHadamard, chd.data = pagemtimes(chd.data, hadamard(us.xdc.numel)); end
     b   = DAS(us, chd, 'apod', a);
     
     % display
     bim = (mod2db(sum(b(:,:,:),3))); % TODO: handle frames better
-    if kwargs.display
-        him.CData(:) = gather(bim - max(bim,[],'all')); % normalize to peak
-    end
+    him.CData(:) = gather(bim - max(bim,[],'all')); % normalize to peak
 end
 return
 end
