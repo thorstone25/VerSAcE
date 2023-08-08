@@ -1,4 +1,4 @@
-function doImagingProc(varargin)
+function doimagingProc(varargin)
 % DOIMAGINGPROC - Activate or deactivate the imageProc function
 %
 % When the button is toggled, this function switches the global variable
