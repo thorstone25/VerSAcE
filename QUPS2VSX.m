@@ -30,6 +30,7 @@ arguments
     kwargs.recon_custom (1,1) logical = true
     kwargs.recon_custom_delays (1,1) logical = false
     kwargs.saver_custom (1,1) logical = true
+    kwargs.custom_imaging (1,1) logical = true
 end
 
 % squash obj to struct warning
@@ -219,6 +220,14 @@ end
 % custom saving process and ui
 if kwargs.saver_custom
     [vUI(end+1), vev_post(end+1)] = addCustomSaver(vbuf_rx, no_operation);
+end
+
+% custom imaging
+if kwargs.custom_imaging
+    if isempty(recon_event), vPData = VSXPData.empty; 
+    else, vPData = recon_event.recon.pdatanum; % reuse PData
+    end
+    [vUI(end+1), vev_post(end+(1:2))] = addCustomImaging(scan, vResource, vbuf_rx, vPData, no_operation);
 end
 
 % return to start of block after all Events

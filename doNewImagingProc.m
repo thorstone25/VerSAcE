@@ -1,8 +1,8 @@
-function doNewImagingProc(varargin)
-% DONEWIMAGINGPROC - Activate or deactivate the NewImageProc function
+function doImagingProc(varargin)
+% DOIMAGINGPROC - Activate or deactivate the NewImageProc function
 %
 % When the button is toggled, this function switches the global variable
 % `toggle`'s state. Inputs don't matter.
 
-global TOGGLE_newImagingProc; if isempty(TOGGLE_newImagingProc), TOGGLE_newImagingProc = false; else, TOGGLE_newImagingProc = ~TOGGLE_newImagingProc; end; 
+global TOGGLE_imagingProc; if isempty(TOGGLE_imagingProc), TOGGLE_imagingProc = false; else, TOGGLE_imagingProc = ~TOGGLE_imagingProc; end; 
 end

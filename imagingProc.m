@@ -1,14 +1,14 @@
 function chd = imagingProc(RData, TW, Receive)
-global TOGGLE_RFDataProc;
+global TOGGLE_imagingProc;
 persistent us chd0 D; % UltrasoundSystem, ChannelData, filter
 persistent him a; % image handle, apodization
 persistent b k PRE_ARGS POST_ARGS; % DAS arguments
 
 % default to false, just in case
-if isempty(TOGGLE_RFDataProc), TOGGLE_RFDataProc = false; end
+if isempty(TOGGLE_imagingProc), TOGGLE_imagingProc = false; end
 
 % load data and pre-allocate outputs the first time
-if TOGGLE_RFDataProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))
+if TOGGLE_imagingProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))
     disp("Initializing ... ");
     
     % init system config and data
@@ -59,7 +59,7 @@ if TOGGLE_RFDataProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvali
 end
 
 % process data
-if TOGGLE_RFDataProc
+if TOGGLE_imagingProc
     % load data
     L = chd0.T*chd0.M;
     RData = reshape(RData(1:2:end, 1:2:end),[], 64, 64); % reshape rdata
