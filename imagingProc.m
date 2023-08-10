@@ -1,78 +1,83 @@
-function chd = imagingProc(RData, TW, Receive)
+function b = imagingProc(RData, conf, kwargs)
+arguments
+    RData {mustBeNumeric}
+    conf struct {mustBeScalarOrEmpty} = struct.empty
+    kwargs.display (1,1) logical = true;
+    kwargs.verbose (1,1) logical = true;
+end
+
 global TOGGLE_imagingProc;
 persistent us chd0 D; % UltrasoundSystem, ChannelData, filter
-persistent him a; % image handle, apodization
-persistent b k PRE_ARGS POST_ARGS; % DAS arguments
+persistent a isHadamard; % apodization, hadamard flag
+% persistent b k PRE_ARGS POST_ARGS; % DAS arguments
 
 % default to false, just in case
 if isempty(TOGGLE_imagingProc), TOGGLE_imagingProc = false; end
 
 % load data and pre-allocate outputs the first time
-if TOGGLE_imagingProc && (isempty(us) || isempty(chd0) || isempty(him) || ~isvalid(him))
-    disp("Initializing ... ");
+if ~isempty(conf) || ( true ... either post-processing or triggered and
+    && (isempty(us) || isempty(chd0))) % if conf or image not initialized ...
+    if kwargs.verbose, disp("Initializing ... "); end
     
     % init system config and data
-    dat = load("qups-conf.mat", "us", "chd"); % load classes
+    if all(isfield(conf, ["us", "chd"]))
+        dat = conf; % use input
+    else
+        dat = load("qups-conf.mat", "us", "chd"); % load classes
+    end
     [us, chd] = deal(dat.us, dat.chd); % assign
 
-    chd.data(:, :, :, :, 1) = chd.data;
-    
     % downsampling
     us.xdc.pitch = us.xdc.pitch / 2;
     us.xdc.numel = us.xdc.numel / 2;
-    chd.data = chd.data(:, 1:2:end, 1:2:end, :, :);
-    chd.t0 = chd.t0(:, 1:2:end);
-    us.seq.numPulse = us.seq.numPulse / 2;
+    % chd.data = chd.data(:, 1:2:end, 1:2:end, :, :);
+    % chd.t0 = chd.t0(:, 1:2:end);
+    % us.seq.numPulse = us.seq.numPulse / 2;
+ 
+    % HACK: check if hadamard transmit
+    isHadamard = isequal(us.seq.apodization(us.xdc), hadamard(us.xdc.numel));
 
-
-    % HACK: fix the start time for the pulse
-    if nargin < 2, TW = evalin('base', 'TW'); end
-%     [~,TW.peak] = computeTWWaveform(TW);
-%     chd.t0 = chd.t0 - TW.peak ./ us.xdc.fc;
-    
-    % HACK: fix the buffer length
-    if nargin < 3, Receive = evalin('base', 'Receive'); end
-    sz = size(chd.data);
-%     sz(1) = mode([Receive.endSample] - [Receive.startSample] + 1);
-    chd.data = zeros(sz, 'like', chd.data);
-    
     % allocate data
     chd = (singleT(chd)); % typing
     chd.data(:,:,:,:,1) = 0; % pre-allocation hack
     
     % filtering
-    D = chd.getPassbandFilter(us.xdc.bw,31);
+    D = chd.getPassbandFilter(us.xdc.bw,51);
     
     % init beamforming args
     a = us.apApertureGrowth(1); % apodization
-    [b, k, PRE_ARGS, POST_ARGS] = DAS(us, chd, 'apod', a);
-    
-    % init display
-    figure;
-    him = imagesc(us.scan, zeros(us.scan.size), [-50 0]);
-    colorbar;
-    colormap gray;
     
     % save
     chd0 = chd;
-    disp("done!")
+    if kwargs.verbose, disp("done!"); end
 end
+ 
 
 % process data
 if TOGGLE_imagingProc
     % load data
     L = chd0.T*chd0.M;
-    RData = reshape(RData(1:2:end, 1:2:end),[], 64, 64); % reshape rdata
-%     RData = permute(RData, [3, 1, 2]); % rearrange dimensions
-    chd0.data(:) = RData(1:3200, :);
+    chd0.data(:) = RData(1:L,:);
     
+    % move to gpu
+    chd = copy(chd0);
+    chd = gpuArray(chd);
+    
+    % downsample rx
+    chd.data = sub(chd.data,1:2:chd.N, chd.ndim);
+
     % process
-    chd = (filter(hilbert(chd0),D));
+    chd = (filter(hilbert(chd),D));
     b   = DAS(us, chd, 'apod', a);
     
     % display
-    bim = (mod2db(sum(b(:,:,:),3))); % TODO: handle frames better
-    him.CData(:) = gather(bim - max(bim,[],'all')); % normalize to peak
+    % bim = (mod2db(sum(b(:,:,:),3))); % TODO: handle frames better
+    % him.CData(:) = gather(bim - max(bim,[],'all')); % normalize to peak
+    
+    % casting
+    b = gather(double(abs(b)));
+else
+    b = zeros(us.scan.size);
 end
 return
 end

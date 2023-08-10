@@ -14,6 +14,7 @@ seqfc = Sequence(      'type', 'VS' , 'c0', c0, 'focus', pf);
 seqfsadv2 = Sequence(     'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel / 2);
 seqfsadv2.apodization_ = zeros([xdc.numel, xdc.numel / 2]);
 seqfsadv2.apodization_(1:2:end,:) = eye(xdc.numel / 2);
+seqfsadv2.delays_ = zeros([xdc.numel, xdc.numel / 2]);
 
 uss = copy(repmat(uss, [1,4]));
 [uss.seq] = deal(seqfsa, seqpw, seqfc, seqfsadv2);
@@ -32,7 +33,7 @@ vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); %
 
 % make blocks
 [vb, chd] = QUPS2VSX(us, Trans, vres, "frames", 1, 'vTW', vTW, ...
-    'recon_VSX', false, 'recon_custom', true, ...
+    'recon_VSX', true, 'recon_custom', false, ...
     'custom_imaging', true, ... % sound speed imaging
 'recon_custom_delays', false, 'saver_custom', false ...
     ); % make VSX block
@@ -60,7 +61,7 @@ pt1; vs.Media = Media; % add simulation media
 % [vs.Recon, vs.ReconInfo] = setVSXLUT(vs.Recon, vs.ReconInfo, vs.PData, tau_rx, tau_tx + swapdim(chd.t0,chd.mdim,5), us.xdc.fc);
 
 % force in simulation mode for testing
-vs.Resource.Parameters.simulateMode = 0; % 1 to force simulate mode, 0 for hardware
+vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
 % save 
 filename = char(fullfile("MatFiles","qups-vsx.mat")); 
@@ -73,7 +74,7 @@ us.xdc = Transducer.Verasonics(Trans);
 save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
 
 % clear external functions
-clear RFDataImg RFDataProc RFDataStore RFDataCImage;
+clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
 
 % VSX;
 
