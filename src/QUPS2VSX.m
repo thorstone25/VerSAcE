@@ -26,11 +26,11 @@ arguments
     kwargs.frames (1,1) {mustBeInteger, mustBePositive} = 1;
     kwargs.sample_mode (1,1) string {mustBeMember(kwargs.sample_mode, ["NS200BW", "NS200BWI", "BS100BW",  "BS67BW",  "BS50BW",  "custom"])} = "NS200BW"
     kwargs.custom_fs (1,1) double
-    kwargs.recon_VSX (1,1) logical = true
-    kwargs.recon_custom (1,1) logical = true
+    kwargs.recon_VSX (1,1) logical = false
+    kwargs.recon_custom (1,1) logical = false
     kwargs.recon_custom_delays (1,1) logical = false
-    kwargs.saver_custom (1,1) logical = true
-    kwargs.custom_imaging (1,1) logical = true
+    kwargs.saver_custom (1,1) logical = false
+    kwargs.custom_imaging (1,1) logical = false
 end
 
 % squash obj to struct warning
@@ -181,7 +181,7 @@ vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), [us.seq.numPulse
 
 for f = 1:kwargs.frames
     for i = 1:us.seq.numPulse % each transmit
-        vEvent(i,f) = VSXEvent('info',"Tx "+i,'tx',vTX(i),'rcv',vRcv(i,f));
+        vEvent(i,f) = VSXEvent('info',"Tx "+i+" - Frame "+f,'tx',vTX(i),'rcv',vRcv(i,f));
     end
 
     % transfer data to host using the last event of the frame
