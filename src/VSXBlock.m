@@ -58,6 +58,12 @@ classdef VSXBlock < matlab.mixin.Copyable
             vpd = [vpd{:}];
             vPData = unique([vRecon.pdatanum, vpd{:}], 'stable');
             
+            % HACK: Vantage utilities expect `Receive`s to be sorted by buffer, frame, and acquisitions(?) 
+            % even if referred to out of order in terms of `Event`s
+            [~, i] = ismember([vRcv.bufnum], vRcvBuffer); % buffer indexing
+            [~, i] = sortrows([i; [vRcv.framenum]; [vRcv.acqNum];]'); % acquisition/frame/buffer sort order
+            vRcv = vRcv(i); % re-order
+
             %% convert to Verasonics definition
             % convert to structs
             Event       = arrayfun(@struct, vEvent);
