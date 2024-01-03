@@ -43,6 +43,7 @@ vb.next = vb.capture(1); % return to beginning of the block at end
 vs = link(vb, vres); % link
 vs.Trans = Trans; % add Trans
 pt1; vs.Media = Media; % add simulation media
+vs.Media.function = 'movePoints'; % make points move
 
 % force in simulation mode for testing
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
