@@ -1,9 +1,9 @@
-function [vBlock, chd, vTrans] = QUPS2VSX(us, xdc, vResource, kwargs)
+function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % QUPS2VSX - Verasonics structure converter
 %
-% [vBlock, chd, vTrans] = QUPS2VSX(us) converts the UltrasoundSystem us
+% [vBlock, chd, Trans] = QUPS2VSX(us) converts the UltrasoundSystem us
 % into a VSXBlock vBlock, a template ChannelData chd, and a Trans
-% structure vTrans. These can be used with VSXBlock.link() to generate a
+% structure Trans. These can be used with VSXBlock.link() to generate a
 % Verasonics compatible configuration structure.
 %
 % [...] = QUPS2VSX(us, xdc) where xdc is a string uses the named transducer
@@ -46,23 +46,23 @@ c0 = us.seq.c0;
 vResource.Parameters.speedOfSound = c0;
 
 if isa(xdc, 'string') % interpret as name
-    vTrans = struct('name', char(xdc), 'units', char(kwargs.units));
+    Trans = struct('name', char(xdc), 'units', char(kwargs.units));
 elseif isa(xdc, 'struct') % interpret as the Trans struct
-    vTrans = xdc;
+    Trans = xdc;
 elseif isa(xdc, "Transducer") % make custom
-    vTrans = xdc.QUPS2VSX();
+    Trans = xdc.QUPS2VSX();
 else
     error("Unrecognized input for xdc.")
 end
 
 % have VSX compute remaining properties
-vTrans = computeTrans(vTrans);
+Trans = computeTrans(Trans);
 
 % convert to QUPS
-xdc = Transducer.Verasonics(vTrans);
+xdc = Transducer.Verasonics(Trans);
 
 % set global params
-lambda = c0 / (1e6*vTrans.frequency); % wavelengths
+lambda = c0 / (1e6*Trans.frequency); % wavelengths
 
 % get the scan region in units of wavelengths so we know the ROI
 assert(isa(us.scan, 'ScanCartesian')); % should be ScanCartesian
@@ -75,26 +75,26 @@ dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-w
 %% TW
 % TODO: include TPC
 % TODO: handle return of Trans
-vTW = computeTWWaveform(kwargs.vTW, vTrans, vResource); % fill out the waveform
+vTW = computeTWWaveform(kwargs.vTW, Trans, vResource); % fill out the waveform
 
 %% Allocate buffers and Set Parameters
 fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies
 
 % decimation frequency as per sampleMode
 if     kwargs.sample_mode == "NS200BW"
-    fs_decim = fs_available(find(fs_available >= 4 * vTrans.frequency, 1)); 
+    fs_decim = fs_available(find(fs_available >= 4 * Trans.frequency, 1)); 
 elseif kwargs.sample_mode == "BS100BW"
-    fs_decim = fs_available(find(fs_available >= 2 * vTrans.frequency, 1));
+    fs_decim = fs_available(find(fs_available >= 2 * Trans.frequency, 1));
 elseif kwargs.sample_mode == "BS67BW"
-    fs_decim = fs_available(find(fs_available >= (2*0.67) * vTrans.frequency, 1));
+    fs_decim = fs_available(find(fs_available >= (2*0.67) * Trans.frequency, 1));
 elseif kwargs.sample_mode == "BS50BW"
-    fs_decim = fs_available(find(fs_available >= 1 * vTrans.frequency, 1));
+    fs_decim = fs_available(find(fs_available >= 1 * Trans.frequency, 1));
 elseif kwargs.sample_mode == "custom"
     fs_decim = fs_available(find(fs_available >= kwargs.custom_fs, 1));
 end
 
 % get the output data buffer length
-spw = fs_decim / vTrans.frequency; % samples per wave
+spw = fs_decim / Trans.frequency; % samples per wave
 bufLen = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sample buffer length supported
 T = bufLen; % alias
 
@@ -144,7 +144,7 @@ for i = 1:us.seq.numPulse
 end
 
 %% TGC
-kwargs.vTGC.Waveform = computeTGCWaveform(kwargs.vTGC, 1e6*vTrans.frequency);
+kwargs.vTGC.Waveform = computeTGCWaveform(kwargs.vTGC, 1e6*Trans.frequency);
 
 %% Rcv
 % default
@@ -243,9 +243,9 @@ vBlock = VSXBlock('capture', vEvent, 'post', vev_post, 'next', vEvent(1), 'vUI',
 
 %% Create a template ChannelData object
 % TODO: call computeTWWaveform to get TW.peak correction
-t0l = - 2 * vTrans.lensCorrection; % lens correction in wavelengths
+t0l = - 2 * Trans.lensCorrection; % lens correction in wavelengths
 t0p = - vTW.peak; % peak correction in wavelengths
-x = zeros([T us.seq.numPulse vTrans.numelements kwargs.frames, 0], 'single');
+x = zeros([T us.seq.numPulse Trans.numelements kwargs.frames, 0], 'single');
 chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
 
 %% added External Functions/Callback
