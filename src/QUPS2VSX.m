@@ -1,9 +1,9 @@
 function [vBlock, chd, vTrans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % QUPS2VSX - Verasonics structure converter
 %
-% [vBlock, vPData, vTrans] = QUPS2VSX(us) converts the UltrasoundSystem us
-% into a VSXBlock vBlock, with a default VSXPData vPData and a Trans
-% structure vTrans. These can be used with VSXBlock.link to generate
+% [vBlock, chd, vTrans] = QUPS2VSX(us) converts the UltrasoundSystem us
+% into a VSXBlock vBlock, a template ChannelData chd, and a Trans
+% structure vTrans. These can be used with VSXBlock.link() to generate a
 % Verasonics compatible configuration structure.
 %
 % [...] = QUPS2VSX(us, xdc) where xdc is a string uses the named transducer
