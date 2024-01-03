@@ -1,10 +1,17 @@
 function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
-% QUPS2VSX - Verasonics structure converter
+% QUPS2VSX - Construct a VSXBlock 
 %
-% [vBlock, chd, Trans] = QUPS2VSX(us) converts the UltrasoundSystem us
-% into a VSXBlock vBlock, a template ChannelData chd, and a Trans
-% structure Trans. These can be used with VSXBlock.link() to generate a
-% Verasonics compatible configuration structure.
+% vBlock = QUPS2VSX(us) converts the UltrasoundSystem us into a 
+% VSXBlock vBlock. This can be used to generate a Verasonics compatible 
+% configuration struct.
+% 
+% [vBlock, chd] = QUPS2VSX(...) additionally returns a template ChannelData
+% chd with data sizing matching the output data in dimensions 1:4 and 
+% size 0 in dimension 5. The data can be preallocated with 
+% `chd.data(:,:,:,:,1) = 0;`
+% 
+% [vBlock, chd, Trans] = QUPS2VSX(...) additionally returns a Verasonics Trans
+% struct Trans.
 %
 % [...] = QUPS2VSX(us, xdc) where xdc is a string uses the named transducer
 % xdc and the `computeTrans` utility to generate the transducer struct.
@@ -14,7 +21,52 @@ function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % default is us.xdc.
 %
 % [...] = QUPS2VSX(us, xdc, vResource) uses the VSXResource vResource
-% instead of creating a new VSXResource. You must specify this if
+% instead of creating a new VSXResource. You must specify and retain a 
+% single vResource whenever buffers are necessary or when combining 
+% multiple blocks.
+%
+% [...] = QUPS2VSX(..., 'frames', F) creates F frames per block. The default 
+% is 1.
+%
+% [...] = QUPS2VSX(..., 'units', 'wavelengths') or 
+% [...] = QUPS2VSX(..., 'units', 'mm') sets the units to wavelengths or
+% millimeters respectively. The default is 'mm'.
+%
+% [...] = QUPS2VSX(..., 'sample_mode', samp) uses the sampling mode given by 
+% the string samp. The default is "NS200BW".
+%
+% [...] = QUPS2VSX(..., 'custom_fs', fs) sets a custom sampling frequency fs. 
+% This overrides the sampling frequency chosen by Verasonics.
+%
+% [...] = QUPS2VSX(..., 'recon_VSX', true) adds basic image reconstruction 
+% via Verasonics' Recon structures. The default is false.
+%
+% [...] = QUPS2VSX(..., 'recon_custom', true) adds basic image reconstruction 
+% via QUPS. The default is false.
+%
+% Example:
+% % Create an UltrasoundSystem
+% xdc = TransducerArray.L11_5v();
+% seq = Sequence('type', 'FSA', 'numPulse', xdc.numel);
+% scan = ScanCartesian('x', -20e-3 : 0.1e-3 : 20e-3, 'z', 0 : 0.1e-3 : 40e-3);
+% us = UltrasoundSystem('scan', scan, 'seq', seq, 'xdc', xdc);
+%
+% % Create the VSXBlock
+% vRes = VSXResource();
+% [vBlock, chd, Trans] = QUPS2VSX(us, "L11-5v", vRes, 'recon_VSX', true);
+%
+% % Link to create the struct
+% s = vBlock.link(vRes);
+% s.Trans = Trans; % include the Trans struct
+%
+% % Save to a MAT-file
+% filename = fullfile('MatFiles','qups-vsx.mat');
+% save(filename, '-struct', 's'); % save the fields of 's'
+%
+% % Launch VSX
+% VSX;
+% 
+% See also VSXBLOCK/LINK
 arguments
     us (1,1) UltrasoundSystem
     xdc (1,1) {mustBeA(xdc, ["string", "struct", "Transducer"])} = us.xdc % transducer name
