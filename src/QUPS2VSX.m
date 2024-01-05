@@ -169,10 +169,11 @@ t0    = min(delay, [], 1); % min over elements
 delay = delay - t0;
 
 % - Set event specific TX attributes.
+% TODO: multiplex on TX if apodization not supported by system channels
 for i = 1:us.seq.numPulse
     % set beamforming geometry
     switch us.seq.type
-        case "VS"
+        case {"VS","FC","DV"}
             vTX(i).FocalPt = us.seq.focus(:,i)/lambda;
             % vTX(i).Origin(1) = us.seq.focus(1,i)/lambda;
             % vTX(i).focus     = us.seq.focus(3,i)/lambda;
@@ -202,13 +203,14 @@ kwargs.vTGC.Waveform = computeTGCWaveform(kwargs.vTGC, 1e6*Trans.frequency);
 % default
 vRcv = VSXReceive('startDepth', dnear, 'endDepth', dfar, 'bufnum', vbuf_rx, 'sampleMode', kwargs.sample_mode);
 if kwargs.sample_mode == "custom", vRcv.decimSampleRate = fs_decim; end
-vRcv.Apod = ones([1, vResource.Parameters.numRcvChannels]);
+vRcv.Apod = ones([1, Trans.numelements]); % use "Dynamic HVMux Apertures"
 vRcv.TGC = kwargs.vTGC;
 
 % replicate
 vRcv = copy(repmat(vRcv,[us.seq.numPulse, kwargs.frames]));
 
 % - Set event specific Receive attributes.
+% TODO: multiplex on RX if apodization not supported by system channels
 for f = 1:kwargs.frames
     % move points before (or after?) first receive of the frame
     vRcv(1,f).callMediaFunc = true;
@@ -237,7 +239,7 @@ for f = 1:kwargs.frames
     end
 
     % transfer data to host using the last event of the frame
-    vEvent(i,f).seqControl = [wait_for_pulse_sequence, transfer_to_host]; % modify last acquisition vEvent's seqControl
+    vEvent(i,f).seqControl = [wait_for_pulse_sequence, copy(transfer_to_host)]; % modify last acquisition vEvent's seqControl
 end
     
 %% Add Events per frame 
