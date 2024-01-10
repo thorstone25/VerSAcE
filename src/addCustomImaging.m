@@ -8,6 +8,7 @@ arguments
     kwargs.numFrames (1,1) double = 1
     kwargs.multipage (1,1) logical = false
     kwargs.display (1,1) logical = true
+    kwargs.function (1,1) string = "RFDataCImage" % function name
 end
 
 % PData
@@ -27,7 +28,7 @@ vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
 
 % Process
 % nm = "imagingProc"; % function name
-nm = "RFDataCImage";
+nm = kwargs.function; % function name
 compute_image_process = VSXProcess('classname', 'External', 'method', nm);
 compute_image_process.Parameters = {
     'srcbuffer','receive',...
