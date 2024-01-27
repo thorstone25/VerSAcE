@@ -83,6 +83,8 @@ arguments
     kwargs.recon_custom_delays (1,1) logical = false
     kwargs.saver_custom (1,1) logical = false
     kwargs.custom_imaging (1,1) logical = false
+    kwargs.multi_rx (1,1) logical = (isa(xdc, 'struct') && (xdc.numelements > vResource.Parameters.numRcvChannels)) ...
+        || (isa(xdc, 'Transducer') && (xdc.numel > vResource.Parameters.numRcvChannels))
 end
 
 % squash obj to struct warning
@@ -112,6 +114,13 @@ Trans = computeTrans(Trans);
 
 % convert to QUPS
 xdc = Transducer.Verasonics(Trans);
+
+% receive multiplexing factor
+if kwargs.multi_rx
+    Mx = ceil(xdc.numel / vResouce.Parameters.numRcvChannels);
+else
+    Mx = 1;
+end
 
 % set global params
 lambda = c0 / (1e6*Trans.frequency); % wavelengths
@@ -152,7 +161,7 @@ T = bufLen; % alias
 
 % make new rx buffer
 vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
-    'rowsPerFrame', T * us.seq.numPulse,...  %-
+    'rowsPerFrame', T * Mx * us.seq.numPulse, ... 
     'colsPerFrame', vResource.Parameters.numRcvChannels...
     );
 
@@ -203,20 +212,29 @@ kwargs.vTGC.Waveform = computeTGCWaveform(kwargs.vTGC, 1e6*Trans.frequency);
 % default
 vRcv = VSXReceive('startDepth', dnear, 'endDepth', dfar, 'bufnum', vbuf_rx, 'sampleMode', kwargs.sample_mode);
 if kwargs.sample_mode == "custom", vRcv.decimSampleRate = fs_decim; end
-vRcv.Apod = ones([1, Trans.numelements]); % use "Dynamic HVMux Apertures"
 vRcv.TGC = kwargs.vTGC;
 
 % replicate
-vRcv = copy(repmat(vRcv,[us.seq.numPulse, kwargs.frames]));
+vRcv = copy(repmat(vRcv,[Mx, us.seq.numPulse, kwargs.frames]));
+
+% set receive apodization - use "Dynamic HVMux Apertures"
+if kwargs.multi_rx
+    N = Trans.numelements / Mx;
+    [vRcv(1,:).Apod] = deal([ones( [1, N]), zeros([1, N])]); % left half
+    [vRcv(2,:).Apod] = deal([zeros([1, N]), ones( [1, N])]); % right half
+else
+    [vRcv.Apod] = deal(ones([1, Trans.numelements])); % all elements on
+end
 
 % - Set event specific Receive attributes.
-% TODO: multiplex on RX if apodization not supported by system channels
-for f = 1:kwargs.frames
+for f = 1:size(vRcv,3)
     % move points before (or after?) first receive of the frame
-    vRcv(1,f).callMediaFunc = true;
-    for i = 1:us.seq.numPulse
-        vRcv(i,f).framenum = f;
-        vRcv(i,f).acqNum   = i;
+    vRcv(1,1,f).callMediaFunc = true;
+    for i = 1:size(vRcv,2)
+        for m = 1:Mx
+            vRcv(m,i,f).framenum = f;
+            vRcv(m,i,f).acqNum   = sub2ind(size(vRcv,1:2), m, i);
+        end
     end
 end
 
@@ -231,16 +249,19 @@ no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2)
 %% Event loop
 % loop through all events and frames
 % ---------- Events ------------- %
-vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), [us.seq.numPulse, kwargs.frames]));
+vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), size(vRcv)));
 
 for f = 1:kwargs.frames
     for i = 1:us.seq.numPulse % each transmit
-        vEvent(i,f) = VSXEvent('info',"Tx "+i+" - Frame "+f,'tx',vTX(i),'rcv',vRcv(i,f));
+        for m = 1:Mx % each receive aperture
+            vEvent(m,i,f) = VSXEvent('info',"Tx "+i+" - Ap "+m+" - Frame "+f,'tx',vTX(i),'rcv',vRcv(m,i,f));
+        end
     end
 
     % transfer data to host using the last event of the frame
-    vEvent(i,f).seqControl = [wait_for_pulse_sequence, copy(transfer_to_host)]; % modify last acquisition vEvent's seqControl
+    vEvent(m,i,f).seqControl = [wait_for_pulse_sequence, copy(transfer_to_host)]; % modify last acquisition vEvent's seqControl
 end
+vEvent = reshape(vEvent, [prod(size(vEvent,1:2)), size(vEvent,3)]); % combine rx multiplexing
     
 %% Add Events per frame 
 % make recon image and return to MATLAB
@@ -299,7 +320,7 @@ vBlock = VSXBlock('capture', vEvent, 'post', vev_post, 'next', vEvent(1), 'vUI',
 % TODO: call computeTWWaveform to get TW.peak correction
 t0l = - 2 * Trans.lensCorrection; % lens correction in wavelengths
 t0p = - vTW.peak; % peak correction in wavelengths
-x = zeros([T us.seq.numPulse Trans.numelements kwargs.frames, 0], 'single');
+x = zeros([T Mx*us.seq.numPulse Trans.numelements kwargs.frames, 0], 'single'); % pre-allocated array
 chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
 
 %% added External Functions/Callback
@@ -322,16 +343,18 @@ arguments
 end
 %% ReconInfo
 % We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vTX)));  % default is to accumulate IQ data.
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vRcv)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
-for j = 1:numel(vReconInfo) % For each reconinfo object
-    vReconInfo(j).txnum  = vTX( j); % tx
-    vReconInfo(j).rcvnum = vRcv(j); % rx
-    vReconInfo(j).regionnum = j; % region index TODO: VSXRegion
+for i = 1:size(vReconInfo,1) % for each rx of the reconinfo object
+for j = 1:size(vReconInfo,2) % for each tx of the reconinfo object
+    vReconInfo(i,j).txnum  = vTX(   j); % tx
+    vReconInfo(i,j).rcvnum = vRcv(i,j); % rx
+    vReconInfo(i,j).regionnum =     j ; % region index TODO: VSXRegion
     if kwargs.multipage
-        vReconInfo(j).pagenum = j; % page number
+        vReconInfo(i,j).pagenum = sub2ind(size(vReconInfo),i,j); % page number
     end
+end
 end
 vReconInfo( 1 ).mode = 'replaceIQ'; % on first tx, replace IQ data
 vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % on last tx, accum and "detect"
@@ -344,7 +367,7 @@ vPData = VSXPData.QUPS(scan);
 
 % create a default region for each transmit
 % TODO: VSXRegion
-vPData.Region = repmat(struct('Shape', struct('Name','Custom'), 'PixelsLA', int32(0:scan.nPix-1), 'numPixels', scan.nPix), size(vReconInfo));
+vPData.Region = repmat(struct('Shape', struct('Name','Custom'), 'PixelsLA', int32(0:scan.nPix-1), 'numPixels', scan.nPix), [1 numel(vReconInfo)]);
 
 % fill out the regions
 % TODO: VSXRegion
@@ -374,7 +397,7 @@ else
 end
 
 %% Recon
-vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vbuf_im, "RINums", vReconInfo);
+vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vbuf_im, "RINums", vReconInfo(:));
 
 %% Display window
 if kwargs.display
