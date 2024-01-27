@@ -16,6 +16,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             arguments
             vblock VSXBlock
             vResource (1,1) VSXResource = VSXResource(); % default resource
+            Trans {mustBeScalarOrEmpty} = struct.empty % transducer
         end
             
             % identify which block each "next" value belongs to if any
@@ -60,6 +61,27 @@ classdef VSXBlock < matlab.mixin.Copyable
             [~, i] = ismember([vRcv.bufnum], vRcvBuffer); % buffer indexing
             [~, i] = sortrows([i; [vRcv.framenum]; [vRcv.acqNum];]'); % acquisition/frame/buffer sort order
             vRcv = vRcv(i); % re-order
+
+            %% assign aperture indices if possible
+            if ~isempty(Trans) && isfield(Trans, 'HVMux')
+                % set TX/RX apertures from available apertures
+                % TODO: include generation of new (compliant) apertures
+                aps = Trans.HVMux.ApertureES; % list of apertures
+
+                % get tx aperture indices
+                out = cellfun(@(ap) {find(all((~ap') | aps,1),1,'first')}, {vTx.Apod}); % choose first match active aperture
+                eind = cellfun(@isempty, out); % empty indices
+                if any(eind), error("VSXBlock:apertureUnavailble","Unable to find any aperture to satisfy transmit " ...
+                        + join(string(vEvent(itx(eind)).info), ", ") + "."); end
+                [vTx.aperture] = deal(out{:});
+
+                % get rx aperture indices
+                out = cellfun(@(ap) {find(all((~ap') | aps,1),1,'first')}, {vRcv.Apod}); % choose first match active aperture
+                eind = cellfun(@isempty, out); % empty indices
+                if any(eind), error("VSXBlock:apertureUnavailble","Unable to find any aperture to satisfy receive " ...
+                        + join(string(vEvent(irx(eind)).info), ", ") + "."); end
+                [vRcv.aperture] = deal(out{:});
+            end
 
             %% convert to Verasonics definition
             % squash obj to struct warning
@@ -200,20 +222,23 @@ classdef VSXBlock < matlab.mixin.Copyable
                     end
                 end
             end
-            
+
             %% Casting
             % convert to a single struct
             nms  = {'Event', 'TX', 'Receive', 'Recon', 'ReconInfo', 'Process', 'SeqControl', 'TW', 'Resource', 'PData', 'TGC', 'UI'};
             vals = {Event, TX, Receive, Recon, ReconInfo, Process, SeqControl, TW, Resource, PData, TGC, UI};
             args = [nms; vals];
             vStruct = struct(args{:});
-           
+
+            % add Trans
+            if ~isempty(Trans), vStruct.Trans = Trans; end
+
             % convert some logicals to double
             [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
             if ~isempty(ReconInfo), [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync ); end
             [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
             [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
-            
+
             % remove empty structures
             for f = string(fieldnames(vStruct))'
                 if isempty(vStruct.(f))
