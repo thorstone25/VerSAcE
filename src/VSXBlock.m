@@ -18,9 +18,6 @@ classdef VSXBlock < matlab.mixin.Copyable
             vResource (1,1) VSXResource = VSXResource(); % default resource
         end
             
-            % squash obj to struct warning
-            warning_state = warning('off', 'MATLAB:structOnObject');
-
             % identify which block each "next" value belongs to if any
             for i = numel(vblock):-1:1
                 for j = numel(vblock):-1:1
@@ -65,6 +62,9 @@ classdef VSXBlock < matlab.mixin.Copyable
             vRcv = vRcv(i); % re-order
 
             %% convert to Verasonics definition
+            % squash obj to struct warning
+            warning_state = warning('off', 'MATLAB:structOnObject');
+
             % convert to structs
             Event       = arrayfun(@struct, vEvent);
             TX          = arrayfun(@struct, vTx);
@@ -86,6 +86,9 @@ classdef VSXBlock < matlab.mixin.Copyable
             Resource.ImageBuffer    = arrayfun(@struct, vImageBuffer);
             Resource.Parameters     = arrayfun(@struct, vParameters);            
             
+            % restore warning state
+            warning(warning_state);
+
             % remove TX.aperture property if unneeded / unspecified
             if all(cellfun(@isempty, {TX.aperture}))
                 TX = rmfield(TX, 'aperture'); 
@@ -127,17 +130,17 @@ classdef VSXBlock < matlab.mixin.Copyable
             end
 
             % remove extra *Frm argument
-	    if ~isempty(Recon), Recon = rmfield(Recon, ["IntBufDestFrm", "ImgBufDestFrm"]); end
+            if ~isempty(Recon), Recon = rmfield(Recon, ["IntBufDestFrm", "ImgBufDestFrm"]); end
 
-    	    % assign indices for ReconInfo
-    	    for i = 1:numel(vReconInfo)
+            % assign indices for ReconInfo
+            for i = 1:numel(vReconInfo)
                 ReconInfo(i).txnum  = safeIsMember([vReconInfo(i).txnum ], vTx );
                 ReconInfo(i).rcvnum = safeIsMember([vReconInfo(i).rcvnum], vRcv);
-        		% TODO: add regionnum property vs. VSXRegion
-        		if isempty(ReconInfo(i).regionnum)
-        		    ReconInfo(i).regionnum = 1; % if no regions specified, use 1st region
-        		end
-    	    end
+                % TODO: add regionnum property vs. VSXRegion
+                if isempty(ReconInfo(i).regionnum)
+                    ReconInfo(i).regionnum = 1; % if no regions specified, use 1st region
+                end
+            end
 
             %% Parse special arguments
             % TW - Remove unused properties
@@ -206,12 +209,12 @@ classdef VSXBlock < matlab.mixin.Copyable
             vStruct = struct(args{:});
            
             % convert some logicals to double
-	    [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
-	    if ~isempty(ReconInfo), [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync ); end
-	    [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
-	    [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
-
-	    % remove empty structures
+            [vStruct.Receive.callMediaFunc] = dealfun(@double, vStruct.Receive.callMediaFunc);
+            if ~isempty(ReconInfo), [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync ); end
+            [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
+            [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
+            
+            % remove empty structures
             for f = string(fieldnames(vStruct))'
                 if isempty(vStruct.(f))
                     vStruct = rmfield(vStruct, f);
@@ -231,9 +234,6 @@ classdef VSXBlock < matlab.mixin.Copyable
                     end
                 end
             end
-
-            % restore warning state
-            warning(warning_state);
         end
     end
 end
