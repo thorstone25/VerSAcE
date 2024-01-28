@@ -116,6 +116,18 @@ Trans = computeTrans(Trans);
 % convert to QUPS
 xdc = Transducer.Verasonics(Trans);
 
+% transmit multiplexing - override the requested sequence if (clearly) 
+% unsatisfiable
+% TODO: validate with Trans.connector
+apd = us.seq.apodization(xdc);
+M = max(sum(apd,1)); % max number of simultaneously transmitting elements
+if M > vResource.Parameters.numTransmit
+    warning("QUPS2VSX:multiplexTX", ...
+        "Multiplexing the transmit aperture to satisfy the number of transmit channels." ...
+        );
+    us.seq = multiplex(us.seq, xdc, vResource.Parameters.numTransmit);
+end
+
 % receive multiplexing factor
 if kwargs.multi_rx
     Mx = ceil(xdc.numel / vResource.Parameters.numRcvChannels);
