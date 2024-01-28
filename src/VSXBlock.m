@@ -17,6 +17,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             vblock VSXBlock
             vResource (1,1) VSXResource = VSXResource(); % default resource
             Trans {mustBeScalarOrEmpty} = struct.empty % transducer
+            kwargs.TXPD (1,1) logical = ~isempty([[vblock.capture.recon], [vblock.post.recon]]) % whether to parse TXPD
         end
             
             % identify which block each "next" value belongs to if any
@@ -258,6 +259,39 @@ classdef VSXBlock < matlab.mixin.Copyable
                         end
                     end
                 end
+            end
+
+            %% Compute
+            % ... once we have all native structs and chars (not classes
+            % and strings), we can run native Vantage functions, although
+            % we'll need to hijack the base workspacae to stay compliant.
+            
+            % Compute transmit power density for corresponding Recons
+            if kwargs.TXPD
+                % assert the local vars exist
+                nms = ["TW", "Trans", "Resource"]; % vars silently required
+                exl = arrayfun(@(n) isfield(vStruct, n), nms); %exist in local
+                if ~all(exl)
+                    error("Fields " + join(nms, " and ") ...
+                        + " are required for TXPD computation."); 
+                end
+
+                % store the Trans and TW in the global (base) workspace
+                exg = find(arrayfun(@(n) evalin('base', "exist('"+n+"','var');"), nms)); % exists in global 
+                vls = arrayfun(@(n) {evalin('base', n)}, nms(exg)); % store temp values
+                vls = [cellstr(nms(exg)); vls]; % make Name/Value pair cells
+                vls = struct(vls{:}); % convert to struct
+                arrayfun(@(n) assignin("base", n, vStruct.(n)), nms(exl)); % store local in base
+
+                % compute
+                for i = 1:numel(Recon) % for each reconstruction process
+                    for j = [ReconInfo(Recon(i).RINums).txnum] % for each TX index
+                        vStruct.TX(j).TXPD = computeTXPD(vStruct.TX(j), vStruct.PData(vStruct.Recon(i).pdatanum)); % requires TW and Trans
+                    end
+                end
+
+                % restore global workspace vars
+                arrayfun(@(n) assignin("base", n, vls.(n)), nms(exg)); % return global vars to base
             end
         end
     end

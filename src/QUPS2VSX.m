@@ -169,6 +169,7 @@ vResource.RcvBuffer(end+1)   = vbuf_rx;
 vTX = copy(repmat(VSXTX('waveform', vTW), [1, us.seq.numPulse]));
 
 % get delay and apodization matrices
+posn  = xdc.positions();
 delay = - us.seq.delays(xdc) * xdc.fc;
 apod  = us.seq.apodization(xdc);
 t0    = min(delay, [], 1); % min over elements
@@ -179,13 +180,14 @@ delay = delay - t0;
 for i = 1:us.seq.numPulse
     % set beamforming geometry
     switch us.seq.type
-        case {"VS","FC","DV"}
-            vTX(i).FocalPt = us.seq.focus(:,i)/lambda;
-            % vTX(i).Origin(1) = us.seq.focus(1,i)/lambda;
-            % vTX(i).focus     = us.seq.focus(3,i)/lambda;
+        case {"FC","DV","VS"} % focused / diverging / virtual source (assumed focused)
+            vTX(i).FocalPt = us.seq.focus(:,i) ./ lambda;
+            vTX(i).focus   = us.seq.focus(3,i) ./ lambda;
         case "PW"
             vTX(i).Steer = deg2rad([us.seq.angles(i), 0]);
+            vTX(i).focus = 0; % focal distance == 0 for PW
         case "FSA"
+            vTX(i).focus = 0; % focal distance == 0 for compliance
             %do nothing
     end
 
@@ -193,13 +195,13 @@ for i = 1:us.seq.numPulse
     vTX(i).Apod  =  apod(:,i)';
     vTX(i).Delay = delay(:,i)';
 
-    % TODO: use computeTXDelays instead
-    % vTX(i).Delay = computeTXDelays(struct(vTX(i))); % requires base
-end
+    % attempt to find the virtual origin as center of active aperture
+    % approximate for non-planar transducers
+    im = median(find(apod(:,i)), 2); % middle element
+    vTX(i).Origin = mean(posn(:,[floor(im), ceil(im)]),2); % 
 
-% TODO: hack compute TXPD
-for i = 1:us.seq.numPulse
-    %         vTX(i).TXPD = computeTXPD(struct(vTX(i)), struct(vPData));
+    % TODO: use computeTXDelays instead?
+    % vTX(i).Delay = computeTXDelays(struct(vTX(i))); % requires base workspace variables
 end
 
 %% TGC
