@@ -112,10 +112,15 @@ classdef VSXBlock < matlab.mixin.Copyable
             % restore warning state
             warning(warning_state);
 
+            % remove Receive.aperture property if unneeded / unspecified
+            if all(cellfun(@isempty, {Receive.aperture}))
+                Receive = rmfield(Receive, 'aperture'); 
+            end
             % remove TX.aperture property if unneeded / unspecified
             if all(cellfun(@isempty, {TX.aperture}))
                 TX = rmfield(TX, 'aperture'); 
             end
+            % remove TX.FocalPt property if unneeded / unspecified
             if all(cellfun(@(x)all(isnan(x)), {TX.FocalPt}))
                 TX = rmfield(TX, 'FocalPt'); 
             end

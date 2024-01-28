@@ -1,7 +1,7 @@
 classdef VSXReceive < matlab.mixin.Copyable
     properties
         Apod (1,:) double
-%         aperture (1,1) double
+        aperture double {mustBeScalarOrEmpty} = []
         startDepth (1,1) double
         endDepth (1,1) double
         TGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC.empty
