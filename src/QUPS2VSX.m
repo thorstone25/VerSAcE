@@ -73,8 +73,10 @@ arguments
     vResource (1,1) VSXResource = VSXResource()
     kwargs.units (1,1) string {mustBeMember(kwargs.units, ["mm", "wavelengths"])} = "mm"
     kwargs.vTW (1,1) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 1, 1]); %-
-    kwargs.vTGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC('CntrlPts', [0,297,424,515,627,764,871,1000],...
-        'rangeMax', hypot(us.scan.zb(2), us.scan.xb(2)) ./ us.lambda); %-
+    kwargs.vTGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC( ...
+        'CntrlPts', [0,297,424,515,627,764,871,1000],...
+        'rangeMax', hypot(us.scan.zb(2), us.scan.xb(2)) ./ us.lambda ...
+        ); % default Time Gain Compensation (TGC)
     kwargs.frames (1,1) {mustBeInteger, mustBePositive} = 1;
     kwargs.sample_mode (1,1) string {mustBeMember(kwargs.sample_mode, ["NS200BW", "NS200BWI", "BS100BW",  "BS67BW",  "BS50BW",  "custom"])} = "NS200BW"
     kwargs.custom_fs (1,1) double
@@ -92,7 +94,6 @@ warning_state = warning('off', 'MATLAB:structOnObject');
 
 % init
 vUI     = reshape(VSXUI.empty   , [1 0]);
-% vPData  = reshape(VSXPData.empty, [1 0]);
 
 %% Trans
 % set sound speed
@@ -135,23 +136,19 @@ dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-w
 
 %% TW
 % TODO: include TPC
-% TODO: handle return of Trans
 vTW = computeTWWaveform(kwargs.vTW, Trans, vResource); % fill out the waveform
 
 %% Allocate buffers and Set Parameters
-fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies
+fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies (MHz)
 
 % decimation frequency as per sampleMode
-if     kwargs.sample_mode == "NS200BW"
-    fs_decim = fs_available(find(fs_available >= 4 * Trans.frequency, 1)); 
-elseif kwargs.sample_mode == "BS100BW"
-    fs_decim = fs_available(find(fs_available >= 2 * Trans.frequency, 1));
-elseif kwargs.sample_mode == "BS67BW"
-    fs_decim = fs_available(find(fs_available >= (2*0.67) * Trans.frequency, 1));
-elseif kwargs.sample_mode == "BS50BW"
-    fs_decim = fs_available(find(fs_available >= 1 * Trans.frequency, 1));
-elseif kwargs.sample_mode == "custom"
-    fs_decim = fs_available(find(fs_available >= kwargs.custom_fs, 1));
+switch kwargs.sample_mode
+    case "NS200BW", fs_decim = fs_available(find(fs_available >= 4 * Trans.frequency, 1));
+    case "BS100BW", fs_decim = fs_available(find(fs_available >= 2 * Trans.frequency, 1));
+    case "BS67BW",  fs_decim = fs_available(find(fs_available >= (2*0.67) * Trans.frequency, 1));
+    case "BS50BW",  fs_decim = fs_available(find(fs_available >= 1 * Trans.frequency, 1));
+    case "custom",  fs_decim = fs_available(find(fs_available >= kwargs.custom_fs, 1));
+    otherwise, error("Sampling mode '" + kwargs.sample_mode + "' unsupported.");
 end
 
 % get the output data buffer length
