@@ -2,7 +2,7 @@ classdef VSXBlock < matlab.mixin.Copyable
     properties
         capture VSXEvent % data capture events
         post (1,:) VSXEvent = VSXEvent.empty % post-processing events
-        next {mustBeScalarOrEmpty} = VSXEvent.empty % event to jump to after loop
+        next VSXEvent {mustBeScalarOrEmpty} = VSXEvent.empty % event to jump to after loop
         vUI VSXUI = VSXUI.empty % UI events
     end
     methods
@@ -12,7 +12,47 @@ classdef VSXBlock < matlab.mixin.Copyable
                 obj.(f) = kwargs.(f);
             end
         end
-        function vStruct = link(vblock, vResource)
+        function vStruct = link(vblock, vResource, Trans, kwargs)
+            % link - Index and pre-process the VSXBlock array
+            %
+            % vStruct = link(vblock, vResource) returns a struct vStruct
+            % that can be saved to a mat-file and used with Vantage
+            % software given the VSXBlock bvlock and the VSXResource
+            % vResource. 
+            %
+            % vStruct = link(vblock, vResource, Trans) additionally appends
+            % the Trans property to vStruct and adds an `aperture` field to
+            % `TX` and `Receive` if appropriate.
+            %
+            % vStruct = link(..., 'TXPD', true) additionally runs
+            % `computeTXPD` to compute the transmit power density. The
+            % default is true if a `VSXRecon` is present.
+            % 
+            % Example:
+            % % Choose a Transducer
+            % Trans = struct('name', 'L12-3v', 'units', 'mm');
+            % Trans = computeTrans(Trans);
+            % 
+            % % Create a system definition in QUPS
+            % xdc = Transducer.Verasonics(Trans);
+            % seq = SequenceRadial('type','PW','angles',-10:10,'c0',1500);
+            % scan = ScanCartesian('x',(-20:1/8:20)*1e-3,'z',(0:1/8:40)*1e-3);
+            % us = UltrasoundSystem('xdc', xdc, 'seq', seq, 'scan', scan);
+            % 
+            % % Convert to a VSXBlock
+            % vres = VSXResource(); % system-wide resource
+            % vBlock = QUPS2VSX(us, Trans, vres); % convert to VSX objects
+            %
+            % % Link and pre-process
+            % vStruct = vBlock.link(vres, Trans);
+            %
+            % % Save and run
+            % filename = 'qups-vsx.mat';
+            % save(filename, '-struct', 'vStruct');
+            % VSX;
+            %
+            % See also: QUPS2VSX
+
             arguments
             vblock VSXBlock
             vResource (1,1) VSXResource = VSXResource(); % default resource
@@ -232,7 +272,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             %% Casting
             % convert to a single struct
             nms  = {'Event', 'TX', 'Receive', 'Recon', 'ReconInfo', 'Process', 'SeqControl', 'TW', 'Resource', 'PData', 'TGC', 'UI'};
-            vals = {Event, TX, Receive, Recon, ReconInfo, Process, SeqControl, TW, Resource, PData, TGC, UI};
+            vals = { Event ,  TX ,  Receive ,  Recon ,  ReconInfo ,  Process ,  SeqControl ,  TW ,  Resource ,  PData ,  TGC ,  UI };
             args = [nms; vals];
             vStruct = struct(args{:});
 

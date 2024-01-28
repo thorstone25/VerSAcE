@@ -173,7 +173,12 @@ posn  = xdc.positions();
 delay = - us.seq.delays(xdc) * xdc.fc;
 apod  = us.seq.apodization(xdc);
 t0    = min(delay, [], 1); % min over elements
-delay = delay - t0;
+delay = delay - t0; % don't include 0
+if max(delay,[],'all') / xdc.fc > 45.5e-6
+    error("QUPS2VSX:unsupportedSequence", ...
+        "The delays exceed the maximum supported delay of " + 45.5 + " us." ...
+        );
+end
 
 % - Set event specific TX attributes.
 % TODO: multiplex on TX if apodization not supported by system channels
