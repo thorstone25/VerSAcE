@@ -118,7 +118,7 @@ xdc = Transducer.Verasonics(Trans);
 
 % receive multiplexing factor
 if kwargs.multi_rx
-    Mx = ceil(xdc.numel / vResouce.Parameters.numRcvChannels);
+    Mx = ceil(xdc.numel / vResource.Parameters.numRcvChannels);
 else
     Mx = 1;
 end
@@ -215,12 +215,11 @@ vRcv.TGC = kwargs.vTGC;
 vRcv = copy(repmat(vRcv,[Mx, us.seq.numPulse, kwargs.frames]));
 
 % set receive apodization - use "Dynamic HVMux Apertures"
-if kwargs.multi_rx
-    N = Trans.numelements / Mx;
-    [vRcv(1,:).Apod] = deal([ones( [1, N]), zeros([1, N])]); % left half
-    [vRcv(2,:).Apod] = deal([zeros([1, N]), ones( [1, N])]); % right half
-else
-    [vRcv.Apod] = deal(ones([1, Trans.numelements])); % all elements on
+N = Trans.numelements; % total elements
+M = N / Mx; % active aperture size (M == N if Mx == 1 for no multiplexing)
+ap = [ones([1, M]), zeros([1, N - M])]; % active aperture
+for i = 1:Mx % for each multiplexed aperture
+    [vRcv(i,:).Apod] = deal(circshift(ap, M*(i-1))); % shift to that portion
 end
 
 % - Set event specific Receive attributes.
