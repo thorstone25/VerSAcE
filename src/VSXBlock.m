@@ -33,8 +33,8 @@ classdef VSXBlock < matlab.mixin.Copyable
             vEvent = [vEvent{:}]; 
 
             %% get arrays of all properties
-            vTx             = unique([vEvent.tx]        , 'stable'); 
-            vRcv            = unique([vEvent.rcv]       , 'stable');
+            [vTx,  itx]     = unique([vEvent.tx]        , 'stable'); 
+            [vRcv, irx]     = unique([vEvent.rcv]       , 'stable');
             vRecon          = unique([vEvent.recon]     , 'stable');
             vReconInfo      = unique([vRecon.RINums]    , 'stable');
             vProcess        = unique([vEvent.process]   , 'stable');
