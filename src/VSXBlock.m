@@ -72,8 +72,8 @@ classdef VSXBlock < matlab.mixin.Copyable
                 % get tx aperture indices
                 out = cellfun(@(ap) {find(all((~ap') | aps,1),1,'first')}, {vTx.Apod}); % choose first match active aperture
                 eind = cellfun(@isempty, out); % empty indices
-                if any(eind), error("VSXBlock:apertureUnavailble","Unable to find any aperture to satisfy transmit " ...
-                        + join(string(vEvent(itx(eind)).info), ", ") + "."); end
+                if any(eind), error("VSXBlock:apertureUnavailable","Unable to find any aperture to satisfy transmit " ...
+                        + join(cellstr({vEvent(itx(eind)).info}), ", ") + "."); end
                 [vTx.aperture] = deal(out{:});
 
                 % get rx aperture indices
