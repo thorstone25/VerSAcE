@@ -164,6 +164,13 @@ classdef VSXBlock < matlab.mixin.Copyable
             if all(cellfun(@(x)all(isnan(x)), {TX.FocalPt}))
                 TX = rmfield(TX, 'FocalPt'); 
             end
+	    % remove empty LUT/rcvLUT properties
+	    if isfield(Recon, 'rcvLUT') && all(cellfun(@isempty, {Recon.rcvLUT}))
+		    Recon = rmfield(Recon, 'rcvLUT');
+	    end
+	    if isfield(ReconInfo, 'LUT') && all(cellfun(@isempty, {ReconInfo.LUT}))
+		    ReconInfo = rmfield(ReconInfo, 'LUT');
+	    end
             
             %% assign indices
             % assign indices for Event
