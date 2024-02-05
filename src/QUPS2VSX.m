@@ -72,19 +72,20 @@ arguments
     xdc (1,1) {mustBeA(xdc, ["string", "struct", "Transducer"])} = us.xdc % transducer name
     vResource (1,1) VSXResource = VSXResource()
     kwargs.units (1,1) string {mustBeMember(kwargs.units, ["mm", "wavelengths"])} = "mm"
-    kwargs.vTW (1,1) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 1, 1]); %-
+    kwargs.vTW (1,:) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 1, 1]);
     kwargs.vTGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC( ...
         'CntrlPts', [0,297,424,515,627,764,871,1000],...
         'rangeMax', hypot(us.scan.zb(2), us.scan.xb(2)) ./ us.lambda ...
         ); % default Time Gain Compensation (TGC)
+    kwargs.vTPC VSXTPC {mustBeScalarOrEmpty} = VSXTPC.empty; 
     kwargs.frames (1,1) {mustBeInteger, mustBePositive} = 1;
     kwargs.sample_mode (1,1) string {mustBeMember(kwargs.sample_mode, ["NS200BW", "NS200BWI", "BS100BW",  "BS67BW",  "BS50BW",  "custom"])} = "NS200BW"
-    kwargs.custom_fs (1,1) double
+    kwargs.custom_fs (1,1) double {mustBeInRange(kwargs.custom_fs, 2.5e6, 62.5e6)}
+    kwargs.range (1,2) {mustBeReal, mustBeNonnegative} = [us.scan.zb(1), hypot(max(abs(us.scan.xb)), max(abs(us.scan.zb)))] ./ (us.seq.c0 ./ us.xdc.fc)
     kwargs.recon_VSX (1,1) logical = false
     kwargs.recon_custom (1,1) logical = false
     kwargs.recon_custom_delays (1,1) logical = false
     kwargs.saver_custom (1,1) logical = false
-    kwargs.custom_imaging (1,1) logical = false
     kwargs.multi_rx (1,1) logical = (isa(xdc, 'struct') && (xdc.numelements > vResource.Parameters.numRcvChannels)) ...
         || (isa(xdc, 'Transducer') && (xdc.numel > vResource.Parameters.numRcvChannels))
 end
@@ -140,15 +141,16 @@ lambda = c0 / (1e6*Trans.frequency); % wavelengths
 
 % get the scan region in units of wavelengths so we know the ROI
 assert(isa(us.scan, 'ScanCartesian')); % should be ScanCartesian
-scan = scale(us.scan, 'dist', 1./lambda);
+scan = scale(us.scan, 'dist', 1./lambda); % convert to wavelengths
 
-% get temporal sampling region
-dnear = floor(2 * scan.zb(1)); % nearest distance (2-way)
-dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-way)
+% get temporal sampling region (wavelengths)
+% dnear = floor(2 * scan.zb(1)); % nearest distance (2-way)
+% dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-way)
+[dnear, dfar] = deal(kwargs.range(1), kwargs.range(2));
+
 
 %% TW
-% TODO: include TPC
-vTW = computeTWWaveform(kwargs.vTW, Trans, vResource); % fill out the waveform
+vTW = arrayfun(@(tw) tw.computeTWWaveform(Trans, vResource, kwargs.vTPC), kwargs.vTW); % fill out the waveform (and TPC)
 
 %% Allocate buffers and Set Parameters
 fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies (MHz)
@@ -165,8 +167,7 @@ end
 
 % get the output data buffer length
 spw = fs_decim / Trans.frequency; % samples per wave
-bufLen = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sample buffer length supported
-T = bufLen; % alias
+T = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sample buffer length supported
 
 % make new rx buffer
 vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
@@ -178,7 +179,9 @@ vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
 vResource.RcvBuffer(end+1)   = vbuf_rx;
 
 %% TX
-vTX = copy(repmat(VSXTX('waveform', vTW), [1, us.seq.numPulse]));
+vTX = copy(repmat(VSXTX(), [1, us.seq.numPulse]));
+b = ~isscalar(vTW); % whether vTW is an array
+for i = 1:numel(vTX), vTX(i).waveform = vTW(i*b+~b); end % index=i or index=1
 
 % get delay and apodization matrices
 posn  = xdc.positions();
@@ -193,7 +196,6 @@ if max(delay,[],'all') / xdc.fc > 45.5e-6
 end
 
 % - Set event specific TX attributes.
-% TODO: multiplex on TX if apodization not supported by system channels
 for i = 1:us.seq.numPulse
     % set beamforming geometry
     switch us.seq.type
@@ -312,24 +314,11 @@ if kwargs.saver_custom
     [vUI(end+1), vev_post(end+1)] = addCustomSaver(vbuf_rx, no_operation);
 end
 
-% custom imaging
-if kwargs.custom_imaging
-    if isempty(recon_event), vPData = VSXPData.empty; 
-    else, vPData = recon_event.recon.pdatanum; % reuse PData
-    end
-    [vUI(end+1), vev_post(end+(1:2))] = addCustomImaging(scan, vResource, vbuf_rx, vPData, no_operation);
-end
-
-% return to start of block after all Events
-% TODO: add option for what to do after the end of all events
-% vEvent(end+1) = VSXEvent('info', 'Jump back', 'seqControl', ...
-%     VSXSeqControl('command', 'jump', 'argument', vEvent(1)) ...
-%     );
-
 % ---------- Events ------------- %
 
 %% Block
 vBlock = VSXBlock('capture', vEvent, 'post', vev_post, 'next', vEvent(1), 'vUI', vUI);
+if ~isempty(kwargs.vTPC), vBlock.vTPC = kwargs.vTPC; end
 
 %% Create a template ChannelData object
 % TODO: call computeTWWaveform to get TW.peak correction
