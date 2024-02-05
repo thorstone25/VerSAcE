@@ -4,6 +4,7 @@ classdef VSXBlock < matlab.mixin.Copyable
         post (1,:) VSXEvent = VSXEvent.empty % post-processing events
         next VSXEvent {mustBeScalarOrEmpty} = VSXEvent.empty % event to jump to after loop
         vUI VSXUI = VSXUI.empty % UI events
+        vTPC VSXTPC = VSXTPC("name","Default"); % Default TPC (no arguments)
     end
     methods
         function obj = VSXBlock(kwargs)
@@ -83,7 +84,14 @@ classdef VSXBlock < matlab.mixin.Copyable
             vTw             = unique([vTx.waveform]     , 'stable');
             vTGC            = unique([vRcv.TGC]         , 'stable');
             vUI             = unique([vblock.vUI]       , 'stable'); %#ok<PROPLC> 
+            vTPC            = unique([vblock.vTPC]      , 'stable'); %#ok<PROPLC> 
             
+            % Processes TODO: extract displays, buffers from here.
+            iImg = (arrayfun(@(v)v.classname == "Image", vProcess)); % image processes
+            iDop = (arrayfun(@(v)v.classname == "Doppler", vProcess)); % Doppler processes
+            iExt = (arrayfun(@(v)v.classname == "External", vProcess)); % Doppler processes
+
+            % get from the resource list
             vDisplayWindow  = unique([vResource.DisplayWindow], 'stable');
             vRcvBuffer      = unique([vResource.RcvBuffer    ], 'stable');
             vInterBuffer    = unique([vResource.InterBuffer  ], 'stable');
@@ -93,10 +101,10 @@ classdef VSXBlock < matlab.mixin.Copyable
             % PData can be referenced in the Parameters field of a Process 
             % (Image or Doppler specifically, if it exists) or in the Recon
             % structure
-            vpd = cellfun(@(p) p(2*find("pdatanum" == p(1:2:end))), {vProcess.Parameters}, 'UniformOutput', false);
-            vpd = [vpd{:}];
+            vpd = cellfun(@(p) p(2*find("pdatanum" == p(1:2:end))), {vProcess([iImg iExt]).Parameters}, 'UniformOutput', false);
+            if ~isempty(vpd), vpd = [vpd{:}]; end
             vPData = unique([vRecon.pdatanum, vpd{:}], 'stable');
-            
+
             % HACK: Vantage utilities expect `Receive`s to be sorted by buffer, frame, and acquisitions(?) 
             % even if referred to out of order in terms of `Event`s
             [~, i] = ismember([vRcv.bufnum], vRcvBuffer); % buffer indexing
@@ -140,6 +148,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             Resource    = arrayfun(@struct, vResource);
             PData       = arrayfun(@struct, vPData);
             TGC         = arrayfun(@struct, vTGC);
+            TPC         = arrayfun(@struct, vTPC); %#ok<PROPLC> 
             UI          = arrayfun(@struct, vUI); %#ok<PROPLC> 
             
             % 
@@ -152,26 +161,17 @@ classdef VSXBlock < matlab.mixin.Copyable
             % restore warning state
             warning(warning_state);
 
-            % remove Receive.aperture property if unneeded / unspecified
-            if all(cellfun(@isempty, {Receive.aperture}))
-                Receive = rmfield(Receive, 'aperture'); 
-            end
-            % remove TX.aperture property if unneeded / unspecified
-            if all(cellfun(@isempty, {TX.aperture}))
-                TX = rmfield(TX, 'aperture'); 
-            end
-            % remove TX.FocalPt property if unneeded / unspecified
-            if all(cellfun(@(x)all(isnan(x)), {TX.FocalPt}))
-                TX = rmfield(TX, 'FocalPt'); 
-            end
-	    % remove empty LUT/rcvLUT properties
-	    if isfield(Recon, 'rcvLUT') && all(cellfun(@isempty, {Recon.rcvLUT}))
-		    Recon = rmfield(Recon, 'rcvLUT');
-	    end
-	    if isfield(ReconInfo, 'LUT') && all(cellfun(@isempty, {ReconInfo.LUT}))
-		    ReconInfo = rmfield(ReconInfo, 'LUT');
-	    end
+            % remove empty properties: Receive.aperture, TX.aperture, 
+            % TX.FocalPt ReconInfo.LUT, Recon.rcvLUT
+            TX          = rmifempty(TX, 'FocalPt');
+            TX          = rmifempty(TX, 'aperture');
+            Receive     = rmifempty(Receive, 'aperture');
+            Recon       = rmifempty(Recon, 'rcvLUT');
+            ReconInfo   = rmifempty(ReconInfo, 'LUT');
             
+            % remove all empty properties of TPC
+            for f = string(fieldnames(TPC))', TPC = rmifempty(TPC, f); end
+
             %% assign indices
             % assign indices for Event
             for i = 1:numel(Event)
@@ -226,12 +226,17 @@ classdef VSXBlock < matlab.mixin.Copyable
             % SeqControl
             for i = 1:numel(SeqControl)
                 % link the index for jump commands
-                if SeqControl(i).command == "jump"
-                   SeqControl(i).argument = safeIsMember([SeqControl(i).argument], vEvent);  
+                if  SeqControl(i).command == "jump"
+                    SeqControl(i).argument = safeIsMember([SeqControl(i).argument], vEvent);
                 end
-                
+
+                % link the index for setTPCProfile commands
+                if  SeqControl(i).command == "setTPCProfile"
+                    SeqControl(i).argument = safeIsMember([SeqControl(i).argument], vTPC); %#ok<PROPLC>
+                end
+
                 % 0 arguments -> empty TODO: use nan to mark empty arguments
-                if SeqControl(i).argument == 0
+                if isnan(SeqControl(i).argument)
                     SeqControl(i).argument = [];
                 end
             end
@@ -278,8 +283,8 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             %% Casting
             % convert to a single struct
-            nms  = {'Event', 'TX', 'Receive', 'Recon', 'ReconInfo', 'Process', 'SeqControl', 'TW', 'Resource', 'PData', 'TGC', 'UI'};
-            vals = { Event ,  TX ,  Receive ,  Recon ,  ReconInfo ,  Process ,  SeqControl ,  TW ,  Resource ,  PData ,  TGC ,  UI };
+            nms  = {'Event', 'TX', 'Receive', 'Recon', 'ReconInfo', 'Process', 'SeqControl', 'TW', 'Resource', 'PData', 'TGC', 'TPC', 'UI'};
+            vals = { Event ,  TX ,  Receive ,  Recon ,  ReconInfo ,  Process ,  SeqControl ,  TW ,  Resource ,  PData ,  TGC ,  TPC ,  UI };
             args = [nms; vals];
             vStruct = struct(args{:});
 
@@ -291,12 +296,19 @@ classdef VSXBlock < matlab.mixin.Copyable
             if ~isempty(ReconInfo), [vStruct.ReconInfo.threadSync ] = dealfun(@double, vStruct.ReconInfo.threadSync ); end
             [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
             [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
+            for i = 1:numel(vStruct.Process)
+                j = vStruct.Process(i).Parameters(1:2:end) == "display";
+                k = 2*find(j);
+                if any(j), vStruct.Process(i).Parameters{k} = double(vStruct.Process(i).Parameters{k}); end
+            end
 
-            % remove empty structures
+            % remove empty structures, or structures of all empty
+            % properties
             for f = string(fieldnames(vStruct))'
                 if isempty(vStruct.(f))
                     vStruct = rmfield(vStruct, f);
                 end
+
             end
 
             % convert all strings to char
@@ -321,29 +333,30 @@ classdef VSXBlock < matlab.mixin.Copyable
             % Compute transmit power density for corresponding Recons
             if kwargs.TXPD
                 % assert the local vars exist
-                nms = ["TW", "Trans", "Resource"]; % vars silently required
-                exl = arrayfun(@(n) isfield(vStruct, n), nms); %exist in local
+                % nms = ["TW", "Trans", "Resource"]; % vars silently required?
+                nms = string(nms(1:end-2)); % is literally everything required???
+                exg = find(arrayfun(@(n) evalin('base', "exist('"+n+"','var');"), nms)); % exists in global 
+                exl = arrayfun(@(n) isfield(vStruct, n), nms); % exist in local
                 if ~all(exl)
                     error("Fields " + join(nms, " and ") ...
                         + " are required for TXPD computation."); 
                 end
 
-                % store the Trans and TW in the global (base) workspace
-                exg = find(arrayfun(@(n) evalin('base', "exist('"+n+"','var');"), nms)); % exists in global 
-                vls = arrayfun(@(n) {evalin('base', n)}, nms(exg)); % store temp values
-                vls = [cellstr(nms(exg)); vls]; % make Name/Value pair cells
-                vls = struct(vls{:}); % convert to struct
-                arrayfun(@(n) assignin("base", n, vStruct.(n)), nms(exl)); % store local in base
+                % swap local and global (base) workspace
+                vls = struct(); for f = nms(exg), vls.(f) = evalin('base', f); end % store global vars in local
+                for f = nms(exl), assignin("base", f, vStruct.(f)); end % store local vars in global
 
-                % compute
+                % compute transmit power density
                 for i = 1:numel(Recon) % for each reconstruction process
                     for j = [ReconInfo(Recon(i).RINums).txnum] % for each TX index
                         vStruct.TX(j).TXPD = computeTXPD(vStruct.TX(j), vStruct.PData(vStruct.Recon(i).pdatanum)); % requires TW and Trans
                     end
                 end
 
-                % restore global workspace vars
-                arrayfun(@(n) assignin("base", n, vls.(n)), nms(exg)); % return global vars to base
+                % restore swap local/global workspace vars
+                for f = nms(exl), vStruct.(f) = evalin("base", f); end % copy global to local 
+                evalin("base", join(["clearvars", nms(exl)], " ")); % delete all local vars temp. copied to base
+                for f = nms(exg), assignin("base", f, vls.(f)); end % return local vars to global
             end
         end
     end
@@ -385,4 +398,23 @@ vEvent = VSXEvent('info', "Jump to " + vEvent.info + (" of block " + i), 'seqCon
     VSXSeqControl('command', 'jump', 'argument', vEvent) ...
     );
 end
+end
+
+function s = rmifempty(s, f)
+% remove field if empty
+%
+% s = rmifempty(s, f) removes field f from struct s if f is a field of s
+% and s(i).f is empty for all i
+% 
+arguments
+    s struct
+    f (1,1) string
+end
+
+% remove s.(f) property if unneeded / unspecified
+if isfield(s, f) && all(cellfun(@isempty, {s.(f)}))
+    s = rmfield(s, f);
+end
+
+
 end

@@ -1,19 +1,19 @@
 classdef VSXTX < matlab.mixin.Copyable
     properties
         waveform VSXTW {mustBeScalarOrEmpty} = VSXTW.empty
-        Origin (1,3) double
-        aperture double {mustBeScalarOrEmpty} = []
-        Apod (1,:) double 
+        Origin (1,3) double = 0
+        aperture double {mustBeScalarOrEmpty, mustBeInteger, mustBePositive} = []
+        Apod (1,:) double  = []
         focus (1,1) double = nan
         Steer (1,2) double = nan
         FocalPt (1,3) double = nan
         % FocalPtMm (1,3) double
-        Delay (1,:) double
-        TXPD (:,:,:,:) uint16
-        % %         peakCutOff (1,1) double
-        % %         peakBLMax (1,1) double
+        Delay (1,:) double = []
+        TXPD (:,:,:,:) uint16 = []
+        peakCutOff double {mustBeScalarOrEmpty} = 1.0 % [] % defaults from showTXPD
+        peakBLMax  double {mustBeScalarOrEmpty} = 4.0 % [] % defaults from showTXPD
         %         VDASApod (1,:) double
-        % %         VDASDelay (1,:) double = 0
+        %         VDASDelay (1,:) double = 0
     end
     methods
         function obj = VSXTX(kwargs)
@@ -23,9 +23,6 @@ classdef VSXTX < matlab.mixin.Copyable
             for f = string(fieldnames(kwargs))'
                 obj.(f) = kwargs.(f); 
             end
-%             if length(obj.TXPD)>length(VSXPData)
-%                 error('transmit pixel data out of range.')
-%             end
         end
     end
 end
