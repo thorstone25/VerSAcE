@@ -91,6 +91,9 @@ classdef VSXTW < matlab.mixin.Copyable
             % waveform that will be produced by the HW.  Refer to system
             % documentation for detailed definition.
 
+             %#ok<*PROPLC> function vars have same name as properties
+             %#ok<*NASGU> variable unused
+
             %% Revision History
             % April 2020 VTS-1365 remove indirect "StatesIndex" mapping; add "trilevel"
             %    TW.type
@@ -111,9 +114,9 @@ classdef VSXTW < matlab.mixin.Copyable
 
             arguments
                 TW VSXTW
-                Trans struct 
+                Trans (1,1) struct 
                 Resource (1,1) VSXResource
-                TPC struct = struct.empty
+                TPC VSXTPC {mustBeScalarOrEmpty} = VSXTPC.empty
             end
             %% Initialization
             % Check to see if the full TW structure is requested by the function call
@@ -1220,7 +1223,7 @@ classdef VSXTW < matlab.mixin.Copyable
                                 scale*Trans.impedance(indxF, 2);
                         end
                     end
-                    TW(i).Zload = Zload; % add the Zload value to TW structure
+                    TW(i).Zload = Zload;% add the Zload value to TW structure
 
 
 
