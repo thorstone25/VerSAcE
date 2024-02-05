@@ -157,13 +157,15 @@ fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies (MHz)
 
 % decimation frequency as per sampleMode
 switch kwargs.sample_mode
-    case "NS200BW", fs_decim = fs_available(find(fs_available >= 4 * Trans.frequency, 1));
-    case "BS100BW", fs_decim = fs_available(find(fs_available >= 2 * Trans.frequency, 1));
-    case "BS67BW",  fs_decim = fs_available(find(fs_available >= (2*0.67) * Trans.frequency, 1));
-    case "BS50BW",  fs_decim = fs_available(find(fs_available >= 1 * Trans.frequency, 1));
-    case "custom",  fs_decim = fs_available(find(fs_available >= kwargs.custom_fs, 1));
+    case "NS200BW", fs_target = Trans.frequency * 4;
+    case "BS100BW", fs_target = Trans.frequency * 2;
+    case "BS67BW",  fs_target = Trans.frequency * 2 * 0.67;
+    case "BS50BW",  fs_target = Trans.frequency * 1;
+    case "custom",  fs_target = kwargs.custom_fs;
     otherwise, error("Sampling mode '" + kwargs.sample_mode + "' unsupported.");
 end
+% fs_decim = fs_available(find(fs_available >= fs_target, 1, 'first')); % get first frequency above limit
+fs_decim = fs_available(argmin(abs(fs_available - fs_target))); % round to nearest supported frequency
 
 % get the output data buffer length
 spw = fs_decim / Trans.frequency; % samples per wave
@@ -257,7 +259,7 @@ end
 
 %% SeqControl
 t_puls = round(T / fs_decim) + 50; % pulse wait time in usec
-t_frm = t_puls*us.seq.numPulse*1.2; % frame wait time in usec
+t_frm = t_puls*Mx*us.seq.numPulse*1.2; % frame wait time in usec
 wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
 wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_frm ); % max TTNA is 4190000
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
