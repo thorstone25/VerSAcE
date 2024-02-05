@@ -101,7 +101,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             % PData can be referenced in the Parameters field of a Process 
             % (Image or Doppler specifically, if it exists) or in the Recon
             % structure
-            vpd = cellfun(@(p) p(2*find("pdatanum" == p(1:2:end))), {vProcess([iImg iExt]).Parameters}, 'UniformOutput', false);
+            vpd = cellfun(@(p) p(2*find("pdatanum" == p(1:2:end))), {vProcess(iImg | iExt).Parameters}, 'UniformOutput', false);
             if ~isempty(vpd), vpd = [vpd{:}]; end
             vPData = unique([vRecon.pdatanum, vpd{:}], 'stable');
 
@@ -168,6 +168,10 @@ classdef VSXBlock < matlab.mixin.Copyable
             Receive     = rmifempty(Receive, 'aperture');
             Recon       = rmifempty(Recon, 'rcvLUT');
             ReconInfo   = rmifempty(ReconInfo, 'LUT');
+            Resource    = rmifempty(Resource, 'RcvBuffer');
+            Resource    = rmifempty(Resource, 'InterBuffer');
+            Resource    = rmifempty(Resource, 'ImageBuffer');
+            Resource    = rmifempty(Resource, 'DisplayWindow');
             
             % remove all empty properties of TPC
             for f = string(fieldnames(TPC))', TPC = rmifempty(TPC, f); end
