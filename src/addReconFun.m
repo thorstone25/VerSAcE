@@ -4,8 +4,8 @@ arguments
     vRcvBuf (1,1) VSXRcvBuffer
     scan (1,1) Scan
     vRes (1,1) VSXResource
-    vPData {mustBeScalarOrEmpty} = VSXPData.empty
-    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
+    vPData {mustBeScalarOrEmpty} = VSXPData.QUPS(scan)
+    vSeq (1,:) VSXSeqControl = VSXSeqControl('command', 'noop', 'argument', 100/0.2);
     kwargs.numFrames (1,1) double = 1
     kwargs.multipage (1,1) logical = false
     kwargs.display (1,1) logical = true
@@ -14,9 +14,6 @@ arguments
     kwargs.UIpos (1,1) string {mustBeMember(kwargs.UIpos, ["UserB1","UserB2","UserB3","UserB4","UserB5","UserB6","UserB7","UserB8","UserC1","UserC2","UserC3","UserC4","UserC5","UserC6","UserC7","UserC8","UserA1","UserA2"])} = "UserB3";
 end
 
-
-% PData
-if isempty(vPData), vPData = VSXPData.QUPS(scan); end
 
 % Image buffer
 vbuf_im    = VSXImageBuffer.fromPData(vPData);
@@ -78,7 +75,7 @@ switch kwargs.UItyp
     case {"VsToggleButton", "VsPushButton"}
         vUI = VSXUI( ...
             'Control', {char(kwargs.UIpos),'Style',char(kwargs.UItyp),'Label', char(kwargs.name)}, ...
-            'Callback', cellstr(["do"+fnm+"(src, event),","global TOGGLE_"+fnm+"; TOGGLE_"+fnm+" = logical(hObj.Value);", "return;"]) ...
+            'Callback', cellstr(["global TOGGLE_"+fnm+"; TOGGLE_"+fnm+" = logical(hObject.Value);", "return;"]) ...
             );
     case "None", vUI = VSXUI.empty;
     otherwise
