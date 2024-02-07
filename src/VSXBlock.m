@@ -68,6 +68,8 @@ classdef VSXBlock < matlab.mixin.Copyable
                         blkid{i} = j; break;
                     end
                 end
+                % no matching other block - assume it belongs to self
+                blkid{i} = i;
             end
 
             % get the sequence of events, in order
@@ -163,8 +165,9 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % remove empty properties: Receive.aperture, TX.aperture, 
             % TX.FocalPt ReconInfo.LUT, Recon.rcvLUT
-            TX          = rmifempty(TX, 'FocalPt');
-            TX          = rmifempty(TX, 'aperture');
+            for f = ["Origin","Steer","focus","FocalPt","TXPD","aperture"]
+                TX =  rmifempty(TX, f);
+            end
             Receive     = rmifempty(Receive, 'aperture');
             Recon       = rmifempty(Recon, 'rcvLUT');
             ReconInfo   = rmifempty(ReconInfo, 'LUT');
@@ -350,19 +353,332 @@ classdef VSXBlock < matlab.mixin.Copyable
                 vls = struct(); for f = nms(exg), vls.(f) = evalin('base', f); end % store global vars in local
                 for f = nms(exl), assignin("base", f, vStruct.(f)); end % store local vars in global
 
-                % compute transmit power density
+                % compute transmit power density in base workspace
                 for i = 1:numel(Recon) % for each reconstruction process
-                    for j = [ReconInfo(Recon(i).RINums).txnum] % for each TX index
-                        vStruct.TX(j).TXPD = computeTXPD(vStruct.TX(j), vStruct.PData(vStruct.Recon(i).pdatanum)); % requires TW and Trans
+                    for j = unique([ReconInfo(Recon(i).RINums).txnum]) % for each TX index
+                        assignin('base', 'j', j); assignin('base', 'i', i);
+                        evalin('base', "TX(j).TXPD = computeTXPD(TX(j), PData(Recon(i).pdatanum));") % requires global vars
                     end
                 end
-
+                
                 % restore swap local/global workspace vars
                 for f = nms(exl), vStruct.(f) = evalin("base", f); end % copy global to local 
                 evalin("base", join(["clearvars", nms(exl)], " ")); % delete all local vars temp. copied to base
                 for f = nms(exg), assignin("base", f, vls.(f)); end % return local vars to global
             end
         end
+    end
+    
+    % validation
+    methods(Static)
+        function [TX, PData, Trans] = validateTXPD(TX, PData, Trans)
+            
+            % showTXPD visualize transmit TXPD data with cutoffs
+            %   Call with no arguments to process all TX structures with first PData struct.
+            %   If a range of TX values is desired, set the first varargin to the range, e.g. [1:10].
+            %   If a PData struct other than one is to be specified, set the range of TX values and
+            %      then specify the PData number in the 2nd argument.
+            %
+            % Last Update: 1-10-2017
+                        
+            PDataBase = evalin('base','PData');
+            PDsldrMax = length(PDataBase);
+            PDsldrMin = 0.99;
+            if length(PDataBase) > 1
+                PDsldrSS  = 1/max(1,length(PDataBase)-1);
+            else
+                PDsldrSS = 1;
+            end
+            
+            Trans = evalin('base','Trans');
+            
+            % default value (indices)
+            TXIn = 1:size(TX,2);
+            PDIn = 1;
+            
+            pdelta=[]; pdeltaX=[]; pdeltaY=[]; pdeltaZ=[]; pdeltaR=[]; pdeltaT=[];
+            %% Get the default value, PDIn is pdata num, txn is tx num
+            txn = TXIn(1);
+            PData = PDataBase(PDIn);
+            
+            % Check for presence of the TXPD data, and compute if not already computed.
+            if ~isfield(TX,'TXPD')
+                h = waitbar(0,'Calculate TPXD, please wait!');
+                for i=1:size(TXIn,2)
+                    TX(TXIn(i)).TXPD = computeTXPD(TX(TXIn(i)),PData);
+                    waitbar(i/size(TXIn,2))
+                end
+                [TX.peakCutOff] = deal(1.0);
+                [TX.peakBLMax] = deal(4.0);
+                close(h)
+            else
+                for i=1:size(TXIn,2)
+                    if isempty(TX(TXIn(i)).TXPD)
+                        TX(TXIn(i)).TXPD = computeTXPD(TX(TXIn(i)),PData);
+                        TX(TXIn(i)).peakCutOff = 1.0;
+                        TX(TXIn(i)).peakBLMax = 4.0;
+                    end
+                end
+            end
+            
+            % update the pdelta setting for showTXPD plot
+            Delta = updatePData(PData);
+            deltaFieldsName = fieldnames(Delta);
+            for i = 1:length(deltaFieldsName)
+                eval(['pdelta',deltaFieldsName{i},'= Delta.',deltaFieldsName{i},';']);
+            end
+            Nrow = PData.Size(1); Ncol = PData.Size(2); Nsec = PData.Size(3);
+            
+            function Delta = updatePData(PData)
+                
+                if isfield(PData,'PDelta') && ~isempty(PData.PDelta)
+                    if isfield(PData,'Coord')
+                        switch PData.Coord
+                            case 'rectangular'
+                                if size(PData.PDelta,2) ~= 3
+                                    error('computeRegions: PData(x).PDelta number of columns must be 3.');
+                                end
+                                Delta.X = PData.PDelta(1);
+                                Delta.Y = PData.PDelta(2);
+                                Delta.Z = PData.PDelta(3);
+                            case 'polar'
+                                if size(PData.PDelta,2) ~= 3
+                                    error('computeRegions: PData(x).PDelta number of columns must be 3.');
+                                end
+                                Delta.T = PData.PDelta(1);
+                                Delta.R = PData.PDelta(2);
+                                Delta.Z = PData.PDelta(3);
+                            case 'cylindrical'
+                                error('computeRegions: PData(x).Coor = ''cylindrical'' is not yet supported.');
+                            otherwise
+                                error('computeRegions: Unrecognized PData(x).Coor string.');
+                        end
+                    else
+                        % Default to rectangular coordinates if no Coord attribute
+                        if size(PData.PDelta,2) ~= 3
+                            error('computeRegions: PData(x).PDelta number of columns must be 3.');
+                        end
+                        Delta.X = PData.PDelta(1);
+                        Delta.Y = PData.PDelta(2);
+                        Delta.Z = PData.PDelta(3);
+                    end
+                elseif isfield(PData,'pdelta') && ~isempty(PData.pdelta)
+                    % if no PDelta and PData.pdelta is set, it implies all non-specified pdelta? are equal to its value.
+                    Delta.pdelta = PData.pdelta;
+                    Delta.X = pdelta;
+                    Delta.Y = pdelta;
+                    Delta.Z = pdelta;
+                    Delta.R = pdelta;
+                    Delta.T = pdelta/64;  % pdeltaT is in radians, for example if pdelta=0.5, pdeltaT = .0078 or
+                    % about 200 radial lines in 90 degrees
+                else
+                    % if PDelta and pdelta are missing, at the least, pdeltaX and pdeltaZ must be specified.
+                    if ~isfield(PData,'pdeltaX') || isempty(PData.pdeltaX)
+                        error('computeRegions: PData(x).pdeltaX must be specified if PData(x).PDelta or pdelta missing.');
+                    elseif ~isfield(PData,'pdeltaZ') || isempty(PData.pdeltaZ)
+                        error('computeRegions: PData(x).pdeltaZ must be specified if PData(x).PDelta or pdelta missing.');
+                    end
+                    % Read specified pdeltaX,Y,Z,R or T.
+                    Delta.X = PData.pdeltaX;
+                    if isfield(PData,'pdeltaY')&&(~isempty(PData.pdeltaY)), Delta.Y = PData.pdeltaY; end
+                    Delta.Z = PData.pdeltaZ;
+                    if isfield(PData,'pdeltaR')&&(~isempty(PData.pdeltaR)), Delta.R = PData.pdeltaR; end
+                    if isfield(PData,'pdeltaT')&&(~isempty(PData.pdeltaT)), Delta.T = PData.pdeltaT; end
+                end
+            end
+            
+            %%
+            % Determine limits for axes. Default is for 2D display, will be changed by
+            % 3D display
+            if isfield(PData,'Coord')&&(strcmp(PData.Coord,'polar'))
+                XLim = [pdeltaT*(1-PData.Size(2))/2, pdeltaT*(PData.Size(2)-1)/2];
+                YLim = [0, pdeltaR * PData.Size(1)];
+            else
+                XLim = [PData.Origin(1), PData.Origin(1) + pdeltaX * PData.Size(2)];
+                YLim = [PData.Origin(3), PData.Origin(3) + pdeltaZ * PData.Size(1)];
+            end
+            
+            %% UIbutton group for plot selection.            
+            % TX peak cutoff slider
+            if ~isfield(TX,'peakCutOff')||isempty(TX(txn).peakCutOff), TX(txn).peakCutOff = 0; end
+            
+            if ~isfield(TX,'peakBLMax')||isempty(TX(txn).peakBLMax), TX(txn).peakBLMax = BLMax; end
+            
+            % Region number slider
+            if ~isfield(PData,'Region')||isempty(PData.Region)
+                evalin('base',['[PData(',int2str(PDIn),').Region] = computeRegions(PData(',int2str(PDIn),'));']);
+                PData = evalin('base',['PData(',int2str(PDIn),')']);
+            end
+            regNum = 1;
+           
+            AxesUnit = 'wavelength';
+            
+            speedOfSound = 1540;
+            if evalin('base','exist(''Resource'',''var'')')
+                Resource = evalin('base','Resource');
+                if isfield(Resource,'Parameters')
+                    if isfield(Resource.Parameters,'speedOfSound')
+                        speedOfSound = Resource.Parameters.speedOfSound/1000; % speed of sound in mm/usec
+                    end
+                end
+                
+                if isfield(Resource,'DisplayWindow')
+                    if isfield(Resource.DisplayWindow,'Title')
+                        hf.Name = ['showTXPD - ',Resource.DisplayWindow.Title];
+                    end
+                end
+                
+            else
+                disp('Speed of sound is not defined, use 1540 m/s as the default value');
+            end
+                        
+            % Calculate the maximum intensity of the TXPD data.
+            maxIntensity = 0;
+            for i = 1:size(TXIn,2)
+                for j = 1:Nsec
+                    TXPD = double(TX(TXIn(i)).TXPD(:,:,j,1));
+                    peak = max(max(TXPD));
+                    if peak>maxIntensity, maxIntensity = peak; end
+                    clear TXPD
+                end
+            end
+            maxIntensity = maxIntensity/256;
+            plotCode = 'intensity';  % default plotCode
+            [Data,clims] = updateImage;
+            
+            %% Nested functions
+            function [Data,clims] = updateImage()
+                Nrow = PData.Size(1); Ncol = PData.Size(2); Nsec = PData.Size(3);
+                setYDir = 0;
+                if Nsec > 1
+                    switch shapeOrientation
+                        case 'xz'
+                            TXPD = zeros(Nsec,Ncol,3);
+                            TXPD(:,:,1) = permute(double(TX(txn).TXPD(sectNum,:,:,1)),[3 2 1])/256;
+                            TXPD(:,:,2) = permute(double(TX(txn).TXPD(sectNum,:,:,2)),[3 2 1])/16;
+                            TXPD(:,:,3) = permute(double(TX(txn).TXPD(sectNum,:,:,3)),[3 2 1])/16;
+                            XLim = [-PData.Origin(2), -PData.Origin(2) + pdeltaY * PData.Size(1)];
+                            YLim = [PData.Origin(3), PData.Origin(3) + pdeltaZ * PData.Size(3)];
+                            sliceLA = sub2ind(PData.Size, sectNum*(ones(Nsec,Ncol)),ones(Nsec,1)*(1:1:Ncol),(ones(Ncol,1)*(1:1:Nsec))');
+                        case 'yz'
+                            TXPD = zeros(Nsec,Nrow,3);
+                            TXPD(:,:,1) = permute(double(TX(txn).TXPD(:,sectNum,:,1)),[3 1 2])/256;
+                            TXPD(:,:,2) = permute(double(TX(txn).TXPD(:,sectNum,:,2)),[3 1 2])/16;
+                            TXPD(:,:,3) = permute(double(TX(txn).TXPD(:,sectNum,:,3)),[3 1 2])/16;
+                            XLim = [PData.Origin(1), PData.Origin(1) + pdeltaX * PData.Size(2)];
+                            YLim = [PData.Origin(3), PData.Origin(3) + pdeltaZ * PData.Size(3)];
+                            sliceLA = sub2ind(PData.Size, ones(Nsec,1)*(1:1:Nrow),sectNum*ones(Nsec,Nrow),(ones(Nrow,1)*(1:1:Nsec))');
+                        case 'xy'
+                            TXPD = zeros(Nrow,Ncol,3);
+                            TXPD(:,:,1) = (double(TX(txn).TXPD(:,:,sectNum,1)))/256;
+                            TXPD(:,:,2) = (double(TX(txn).TXPD(:,:,sectNum,2)))/16;
+                            TXPD(:,:,3) = (double(TX(txn).TXPD(:,:,sectNum,3)))/16;
+                            XLim = [PData.Origin(1), PData.Origin(1) + pdeltaX * PData.Size(2)];
+                            YLim = [PData.Origin(2), PData.Origin(2) - pdeltaY * PData.Size(1)];
+                            sliceLA = sub2ind(PData.Size, (ones(Ncol,1)*(1:1:Nrow))',ones(Nrow,1)*(1:1:Ncol),sectNum*ones(Nrow,Ncol));
+                            setYDir = 1;
+                    end
+                else
+                    TXPD = double(TX(txn).TXPD);
+                    TXPD(:,:,1) = TXPD(:,:,1)/256;
+                    TXPD(:,:,2:3) = TXPD(:,:,2:3)/16;
+                    if isfield(PData,'Coord')&&(strcmp(PData.Coord,'polar'))
+                        XLim = [pdeltaT*(1-PData.Size(2))/2, pdeltaT*(PData.Size(2)-1)/2];
+                        YLim = [0, pdeltaR * PData.Size(1)];
+                    else
+                        XLim = [PData.Origin(1), PData.Origin(1) + pdeltaX * PData.Size(2)];
+                        YLim = [PData.Origin(3), PData.Origin(3) + pdeltaZ * PData.Size(1)];
+                    end
+                    sliceLA = reshape(find(ones(Nrow,Ncol)),Nrow,Ncol);
+                end
+                
+                P = (TXPD(:,:,1)>TX(txn).peakCutOff)&(TXPD(:,:,3)<TX(txn).peakBLMax);
+                P = +P;  % convert logical to double.
+                switch plotCode
+                    case 'intensity'
+                        Data = TXPD(:,:,1) .* P;
+                        clims = [0 maxIntensity];
+                    case 'peakTime'
+                        Data = TXPD(:,:,2) .* P;
+                        clims = [0 max(max(TXPD(:,:,2)))];
+                    case 'burstLength'
+                        Data = TXPD(:,:,3) .* P;
+                        clims = [0 max(0.5,max(max(Data)))]; % don't allow max to go to 0
+                end
+                
+                if isequal(clims(1),clims(2)), clims(2) = clims(1)+0.01; end % prevent error message from caxis
+                
+                if (get(showReg,'Value') == 1)&&(regNum~=0)
+                    regNum = round(get(nregSldr,'Value'));
+                    if ~isfield(PData,'Region')||isempty(PData.Region), return, end
+                    if ~isfield(PData.Region(regNum),'numPixels')||isempty(PData.Region(regNum).numPixels), return, end
+                    ci = clims(2)/4; % intensity of Region pixels
+                    [row,col] = find(ismember(sliceLA,PData.Region(regNum).PixelsLA+1));
+                    Data(sub2ind(size(Data),row(iseven(row+col)),col(iseven(row+col)))) = ci;
+                end
+                
+                axes(ha),
+                if strcmp(AxesUnit,'mm')
+                    XLim = XLim * speedOfSound/Trans.frequency;
+                    YLim = YLim * speedOfSound/Trans.frequency;
+                end
+                
+                imagesc(XLim,YLim,Data,clims); if setYDir, set(ha,'YDir','normal'); end
+                if isfield(PData,'Coord')&&(strcmp(PData.Coord,'polar'))
+                    xlabel('Angle in Radians');
+                    ylabel('Depth in Wavelengts');
+                    set(changeUnit,'Visible','off');
+                end
+                
+                % plot Transducer elements
+                if Trans.type ~= 2
+                    scaleToWvl = Trans.frequency/speedOfSound; % conversion factor from mm to wavelengths
+                    
+                    if strcmp(Trans.units, 'mm') && strcmp(AxesUnit,'wavelength')
+                        ElementPos = Trans.ElementPos * scaleToWvl;
+                    elseif strcmp(Trans.units, 'wavelengths') && strcmp(AxesUnit,'mm')
+                        ElementPos = Trans.ElementPos / scaleToWvl;
+                    else
+                        ElementPos = Trans.ElementPos;
+                    end
+                    if isfield(PData,'Coord')&&(strcmp(PData.Coord,'polar'))
+                        ElementPos(:,1) = linspace(XLim(1),XLim(2),Trans.numelements);
+                        switch Trans.type
+                            case 0 % phase array
+                                if isfield(PData.Region(regNum).Shape,'Position')
+                                    z = PData.Region(regNum).Shape.Position(3);
+                                else
+                                    z = PData.Origin(3); % entire PData
+                                end
+                                ElementPos(:,3) = abs(z./cos(ElementPos(:,1)));
+                            case 1 % curved array
+                                ElementPos(:,3) = Trans.radius;
+                        end
+                    end
+                    hold on;
+                    if isfield(Trans,'HVMux')
+                        if isfield(TX(1,txn),'aperture') == 1
+                            aperture = TX(1,txn).aperture;  %Import aperture Data
+                        else
+                            aperture = 1;
+                        end
+                        if isfield(Trans.HVMux,'ApertureES')
+                            ActEle = Trans.HVMux.ApertureES(:,aperture);
+                        else
+                            ActEle = Trans.HVMux.Aperture(:,aperture);
+                        end
+                        ActEle(ActEle ~= 0) = 1;
+                        ActEle(ActEle == 0) = NaN;
+                    else
+                        ActEle = ones(1,Trans.numelements);
+                    end
+                    plot(ElementPos(ActEle==1,1),ElementPos(ActEle==1,3),'rs');
+                    hold off
+                end
+            end
+                        
+        end
+        
     end
 end
 
