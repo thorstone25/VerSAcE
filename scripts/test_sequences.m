@@ -1,46 +1,71 @@
-%% Create different system configurations
+ %#ok<*UNRCH> 
+ 
+ %% Create different system configurations
 c0 = 1500; % sound speed
-xdc = TransducerArray.L11_5v();
+% xdc_name = "L12-3v"; % choose transducer
+xdc_name = "L12-5 50mm"; % choose transducer
+Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
+xdc = Transducer.Verasonics(Trans);
 uss = UltrasoundSystem('xdc', xdc); 
 uss.seq.c0 = c0;
 [uss.scan.dx, uss.scan.dz] = deal(uss.lambda / 2);
 
+apd_center = false; % use only ceneter aperture
 
 % sequences
 pf = [0;0;50e-3] + [1e-3;0;0] .* (-20 : 5 : 20);
 seqfsa = Sequence(     'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel);
-seqpw = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -25 : 0.5 : 25); 
+seqpw = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -25 : 2.5 : 25); 
 seqfc = Sequence(      'type', 'VS' , 'c0', c0, 'focus', pf);
-seqfsadv2 = Sequence(     'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel / 2);
-seqfsadv2.apodization_ = zeros([xdc.numel, xdc.numel / 2]);
-seqfsadv2.apodization_(1:2:end,:) = eye(xdc.numel / 2);
-seqfsadv2.delays_ = zeros([xdc.numel, xdc.numel / 2]);
+
+% spatial downsampling
+Ds = 4; 
+seqfsadv = Sequence(  'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel / Ds);
+seqfsadv.apodization_ = zeros([xdc.numel, seqfsadv.numPulse]);
+seqfsadv.apodization_(1:Ds:end,:) = eye(xdc.numel / Ds);
 
 uss = copy(repmat(uss, [1,4]));
-[uss.seq] = deal(seqfsa, seqpw, seqfc, seqfsadv2);
+[uss.seq] = deal(seqfsa, seqpw, seqfc, seqfsadv);
+
 
 %%
 % selection
-seq_ind = 4;
+seq_ind = 3; % sequence index
 us = copy(uss(seq_ind)); % choose pulse sequence template
-xdc_name = "L7-4"; % choose transducer
-
-% create VSX objects
+if apd_center
+    N = min(128, us.xdc.numel);% active aperture size
+    apd = circshift([ones(1,N), zeros(1,us.xdc.numel-N)], (us.xdc.numel-N)/2)';
+    us.seq.apodization_ = repmat(apd, [1 us.seq.numPulse]);
+end
 % constant resources
 vres = VSXResource(); % system-wide resource
-Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
 vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
+vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 
 % make blocks
-[vb, chd] = QUPS2VSX(us, Trans, vres, "frames", 1, 'vTW', vTW, ...
-    'recon_VSX', true, 'recon_custom', false, ...
-    'custom_imaging', true, ... % sound speed imaging
-'recon_custom_delays', false, 'saver_custom', false ...
-    ); % make VSX block
+[vb, chd] = QUPS2VSX(us, Trans, vres, "frames", 1 ...
+    ,'vTW', vTW, 'vTPC', vTPC ...
+    ,'recon_VSX', true ...
+    ,'saver_custom', true ...
+    ,'set_foci', true ...
+    ,'range', [0 200]*1e-3 ... in m
+); % make VSX block
+
+% set peak cut-off for VSX imaging
+txs = cat(2,vb.capture.tx);
+[txs.peakCutOff] = deal(2);
+
+% Terminate when done acquiring (not working ...)
+% vb.post(end+1) = VSXEvent('info', 'Stop', 'seqControl', [...
+%     VSXSeqControl('command', 'stop'), VSXSeqControl('command', 'returnToMatlab')...
+% ]);
+% vb.next = VSXEvent.empty;
+
+%{
 % [vb(1), chd(1)] = QUPS2VSX(uss(1), Trans, vres, "frames", 1, 'vTW', vTW); % make VSX block
 % [vb(2), chd(2)] = QUPS2VSX(uss(2), Trans, vres, "frames", 4, 'vTW', vTW); % make VSX block
 % [vb.next] = deal(vb(2).capture(1), vb(1).capture(1)); % start at beginning of alternate sequence
-
+%}
 % DEBUG: test the manual receive delays
 %{
 for i = 1:numel(seq_ind)
@@ -51,9 +76,9 @@ for i = 1:numel(seq_ind)
 end
 %}
 
-% convert to VSX structures
-vs = link(vb, vres); % link
-vs.Trans = Trans; % add Trans
+%% convert to VSX structures
+global vs; % make global to access in within function
+vs = link(vb, vres, Trans, 'TXPD', true); % link
 pt1; vs.Media = Media; % add simulation media
 
 % DEBUG: test the manual receive delays
@@ -63,15 +88,17 @@ pt1; vs.Media = Media; % add simulation media
 % force in simulation mode for testing
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
-% save 
+%% save 
 filename = char(fullfile("MatFiles","qups-vsx.mat")); 
 save(filename, '-struct', 'vs');
 
-% fix Transducer to match VSX
-us.xdc = Transducer.Verasonics(Trans);
-
 % save
 save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
+
+% set output save directory
+global VSXOOD_SAVE_DIR;
+VSXOOD_SAVE_DIR = fullfile(pwd, 'tmp');
+if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
 
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
