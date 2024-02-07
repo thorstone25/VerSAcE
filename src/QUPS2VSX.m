@@ -44,6 +44,16 @@ function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % [...] = QUPS2VSX(..., 'recon_custom', true) adds basic image reconstruction 
 % via QUPS. The default is false.
 %
+% [...] = QUPS2VSX(..., 'range', [lb ub]) sets the data acquisition range
+% from lb to ub in meters. The default is determined by the
+% closest/furthest pixel of the scan.
+%
+% [...] = QUPS2VSX(..., 'set_foci', true) sets the Verasonics 'Origin',
+% 'Steer', and 'focus' properties for each 'TX' struct. This appears to
+% *override* the delays from QUPS, making them innacurate! However, these
+% properties are required for the 'computeTXPD' utility. The default is
+% false.
+%
 % Example:
 % % Create an UltrasoundSystem
 % xdc = TransducerArray.L11_5v();
@@ -81,13 +91,14 @@ arguments
     kwargs.frames (1,1) {mustBeInteger, mustBePositive} = 1;
     kwargs.sample_mode (1,1) string {mustBeMember(kwargs.sample_mode, ["NS200BW", "NS200BWI", "BS100BW",  "BS67BW",  "BS50BW",  "custom"])} = "NS200BW"
     kwargs.custom_fs (1,1) double {mustBeInRange(kwargs.custom_fs, 2.5e6, 62.5e6)}
-    kwargs.range (1,2) {mustBeReal, mustBeNonnegative} = [us.scan.zb(1), hypot(max(abs(us.scan.xb)), max(abs(us.scan.zb)))] ./ (us.seq.c0 ./ us.xdc.fc)
+    kwargs.range (1,2) {mustBeReal, mustBeNonnegative} = [us.scan.zb(1), hypot(max(abs(us.scan.xb)), max(abs(us.scan.zb)))]
     kwargs.recon_VSX (1,1) logical = false
     kwargs.recon_custom (1,1) logical = false
     kwargs.recon_custom_delays (1,1) logical = false
     kwargs.saver_custom (1,1) logical = false
     kwargs.multi_rx (1,1) logical = (isa(xdc, 'struct') && (xdc.numelements > vResource.Parameters.numRcvChannels)) ...
         || (isa(xdc, 'Transducer') && (xdc.numel > vResource.Parameters.numRcvChannels))
+    kwargs.set_foci (1,1) logical = false
 end
 
 % squash obj to struct warning
@@ -96,9 +107,12 @@ warning_state = warning('off', 'MATLAB:structOnObject');
 % init
 vUI     = reshape(VSXUI.empty   , [1 0]);
 
+% tx sequence
+seq = us.seq;
+
 %% Trans
 % set sound speed
-c0 = us.seq.c0;
+c0 = seq.c0;
 vResource.Parameters.speedOfSound = c0;
 
 if isa(xdc, 'string') % interpret as name
@@ -120,13 +134,13 @@ xdc = Transducer.Verasonics(Trans);
 % transmit multiplexing - override the requested sequence if (clearly) 
 % unsatisfiable
 % TODO: validate with Trans.connector
-apd = us.seq.apodization(xdc);
+apd = seq.apodization(xdc);
 M = max(sum(apd,1)); % max number of simultaneously transmitting elements
 if M > vResource.Parameters.numTransmit
     warning("QUPS2VSX:multiplexTX", ...
         "Multiplexing the transmit aperture to satisfy the number of transmit channels." ...
         );
-    us.seq = multiplex(us.seq, xdc, vResource.Parameters.numTransmit);
+    seq = multiplex(seq, xdc, vResource.Parameters.numTransmit);
 end
 
 % receive multiplexing factor
@@ -146,8 +160,7 @@ scan = scale(us.scan, 'dist', 1./lambda); % convert to wavelengths
 % get temporal sampling region (wavelengths)
 % dnear = floor(2 * scan.zb(1)); % nearest distance (2-way)
 % dfar  =  ceil(2 * hypot(range(scan.xb), scan.zb(end))); % furthest distance (2-way)
-[dnear, dfar] = deal(kwargs.range(1), kwargs.range(2));
-
+[dnear, dfar] = deal(kwargs.range(1)./lambda, kwargs.range(2)./lambda);
 
 %% TW
 vTW = arrayfun(@(tw) tw.computeTWWaveform(Trans, vResource, kwargs.vTPC), kwargs.vTW); % fill out the waveform (and TPC)
@@ -173,7 +186,7 @@ T = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sampl
 
 % make new rx buffer
 vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
-    'rowsPerFrame', T * Mx * us.seq.numPulse, ... 
+    'rowsPerFrame', T * Mx * seq.numPulse, ... 
     'colsPerFrame', vResource.Parameters.numRcvChannels...
     );
 
@@ -181,40 +194,50 @@ vbuf_rx    = VSXRcvBuffer(  'numFrames', kwargs.frames, ...
 vResource.RcvBuffer(end+1)   = vbuf_rx;
 
 %% TX
-vTX = copy(repmat(VSXTX(), [1, us.seq.numPulse]));
+vTX = copy(repmat(VSXTX(), [1, seq.numPulse]));
 b = ~isscalar(vTW); % whether vTW is an array
 for i = 1:numel(vTX), vTX(i).waveform = vTW(i*b+~b); end % index=i or index=1
 
 % get delay and apodization matrices
 posn  = xdc.positions();
-delay = - us.seq.delays(xdc) * xdc.fc;
-apod  = us.seq.apodization(xdc);
-t0    = min(delay, [], 1); % min over elements
+delay = - seq.delays(xdc) * xdc.fc;
+apod  = seq.apodization(xdc);
+% delay(~apod) = nan; % deactivate non-active elements, TODO: debug this
+t0    = min(delay, [], 1, 'omitnan'); % min over elements
 delay = delay - t0; % don't include 0
-if max(delay,[],'all') / xdc.fc > 45.5e-6
+if max(delay,[],'all','omitnan') / xdc.fc > 45.5e-6
     error("QUPS2VSX:unsupportedSequence", ...
         "The delays exceed the maximum supported delay of " + 45.5 + " us." ...
         );
 end
 
 % - Set event specific TX attributes.
-for i = 1:us.seq.numPulse
-    % set beamforming geometry
-    switch us.seq.type
-        case {"FC","DV","VS"} % focused / diverging / virtual source (assumed focused)
-            vTX(i).FocalPt = us.seq.focus(:,i) ./ lambda;
-            vTX(i).focus   = us.seq.focus(3,i) ./ lambda;
-        case "PW"
-            vTX(i).Steer = deg2rad([us.seq.angles(i), 0]);
-            vTX(i).focus = 0; % focal distance == 0 for PW
-        case "FSA"
-            vTX(i).focus = 0; % focal distance == 0 for compliance
-            %do nothing
+for i = 1:seq.numPulse
+    % NOTE: Verasonics overrides users delays when the {'focus','Steer','Origin'} properties are deleted!!!!!
+    % These should be left at 0 to ensure that they exist, and the QUPS delays are used.
+    % There may be conflicts with TXPD and the way that VSX computes minimum delays
+    if kwargs.set_foci % set beamforming geometry
+        switch seq.type
+            case {"FC","DV","VS"} % focused / diverging / virtual source (assumed focused)
+                % TODO: set for arb. Transducer types
+                if ~any(arrayfun(@(t) isa(xdc,t), ["TransducerArray", "TransducerMatrix"]))
+                    warning("Focal sequence 'Origin' property assumes a planar transducers.");
+                end
+                vTX(i).FocalPt = seq.focus(:,i) ./ lambda;
+                vTX(i).focus   = seq.focus(3,i) ./ lambda; % set z value
+                vTX(i).Origin  = seq.focus(:,i) ./ lambda .* [1 1 0]'; % set to z=0
+            case "PW"
+                vTX(i).Steer = deg2rad([seq.angles(i), 0]);
+                % vTX(i).focus = 0; % focal distance == 0 for PW
+            case "FSA"
+                % vTX(i).focus = 0; % focal distance == 0 for compliance
+                %do nothing
+        end
     end
 
     % set delays and apodization
-    vTX(i).Apod  =  apod(:,i)';
-    vTX(i).Delay = delay(:,i)';
+    vTX(i).Apod  =           apod(:,i)' ;
+    vTX(i).Delay = nan2zero(delay(:,i)');
 
     % attempt to find the virtual origin as center of active aperture
     % approximate for non-planar transducers
@@ -235,7 +258,7 @@ if kwargs.sample_mode == "custom", vRcv.decimSampleRate = fs_decim; end
 vRcv.TGC = kwargs.vTGC;
 
 % replicate
-vRcv = copy(repmat(vRcv,[Mx, us.seq.numPulse, kwargs.frames]));
+vRcv = copy(repmat(vRcv,[Mx, seq.numPulse, kwargs.frames]));
 
 % set receive apodization - use "Dynamic HVMux Apertures"
 N = Trans.numelements; % total elements
@@ -259,7 +282,7 @@ end
 
 %% SeqControl
 t_puls = round(T / fs_decim) + 50; % pulse wait time in usec
-t_frm = t_puls*Mx*us.seq.numPulse*1.2; % frame wait time in usec
+t_frm = t_puls*Mx*seq.numPulse*1.2; % frame wait time in usec
 wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
 wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_frm ); % max TTNA is 4190000
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
@@ -271,7 +294,7 @@ no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2)
 vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), size(vRcv)));
 
 for f = 1:kwargs.frames
-    for i = 1:us.seq.numPulse % each transmit
+    for i = 1:seq.numPulse % each transmit
         for m = 1:Mx % each receive aperture
             vEvent(m,i,f) = VSXEvent('info',"Tx "+i+" - Ap "+m+" - Frame "+f,'tx',vTX(i),'rcv',vRcv(m,i,f));
         end
@@ -326,7 +349,7 @@ if ~isempty(kwargs.vTPC), vBlock.vTPC = kwargs.vTPC; end
 % TODO: call computeTWWaveform to get TW.peak correction
 t0l = - 2 * Trans.lensCorrection; % lens correction in wavelengths
 t0p = - vTW.peak; % peak correction in wavelengths
-x = zeros([T Mx*us.seq.numPulse Trans.numelements kwargs.frames, 0], 'single'); % pre-allocated array
+x = zeros([T Mx*seq.numPulse Trans.numelements kwargs.frames, 0], 'single'); % pre-allocated array
 chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
 
 %% added External Functions/Callback
@@ -562,6 +585,7 @@ arguments
     vbuf_rx (1,1) VSXRcvBuffer
     vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
 end
+
 %% Process: saving data
 save_rf_data = VSXProcess('classname', 'External', 'method', 'RFDataStore');
 save_rf_data.Parameters = {
