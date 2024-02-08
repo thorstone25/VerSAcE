@@ -6,14 +6,13 @@ c0 = 1500; % sound speed
 Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
 xdc = Transducer.Verasonics(Trans); % VSX -> QUPS
 
-
 % imaging region
 scan = ScanCartesian('x', 1e-3*[-20 20], 'z', 1e-3*[0 50], 'y', 0);
 
 % pulse sequences
-P = xdc.numel/8; % pilot every P pulses
 seq0 = Sequence('type','FSA','c0', c0, 'numPulse', xdc.numel); % FSA acquisition
-% seq0 = SequenceRadial('type','PW','c0', c0, 'angles',-15 : 2 : 15); % PW acquisition
+% seq0 = SequenceRadial('type','PW','c0', c0, 'angles',-23 : 2 : 23); % PW acquisition
+P = seq0.numPulse/8; % pilot every P pulses
 seqp = Sequence('type','VS' ,'c0', c0, 'focus', [0 0 50e-3]' * ones([1,1+seq0.numPulse/P])); % pilot pulses
 M = max(0, xdc.numel - 128) / 2; % buffer
 seqp.apodization_ = repmat([zeros(M,1);ones(xdc.numel-2*M,1);zeros(M,1)],[1,seqp.numPulse]); % restrict pilot pulses to within 128 elements to avoid tx multiplexing
@@ -21,7 +20,7 @@ seqp.apodization_ = repmat([zeros(M,1);ones(xdc.numel-2*M,1);zeros(M,1)],[1,seqp
 % systems
 us0 = UltrasoundSystem('xdc', xdc, 'seq', seq0, 'scan', scan);
 usp = UltrasoundSystem('xdc', xdc, 'seq', seqp, 'scan', scan);
-[scan.dx, scan.dz] = deal(us0.lambda / 4);
+[scan.dx, scan.dz] = deal(us0.lambda / 2);
 
 % combine FSA and pilot sequences
 txapd0 = reshape(seq0.apodization(xdc), xdc.numel, P, []);
@@ -58,7 +57,7 @@ us.seq = SequenceGeneric('apod', txapd, 'del', txtau, 'c0', seq0.c0, 'numPulse',
     ... ,'range', [0 us.scan.zb(2)] ...
     ,'vTW', vTW, 'vTPC', vTPC ...
     ,"frames", F,'set_foci', false ...
-    , 'recon_VSX', false ...
+    ,'recon_VSX', false ...
     ,'recon_custom', false, 'saver_custom', true ...
     ); % ref
 rxbuf = unique([cat(2,vb.capture.rcv).bufnum]);
@@ -66,6 +65,13 @@ rxbuf = unique([cat(2,vb.capture.rcv).bufnum]);
 % add QUPS processing
 [ui, ev] = addReconFun("bfQUPS", rxbuf, us.scan, vres, 'UItyp', 'VsToggleButton');
 [vb.vUI(end+(1:numel(ui))), vb.post(end+(1:numel(ev)))] = deal(ui, ev);
+iopts = struct(ev(2).process.Parameters{:}); % imaging process params
+% iopts.displayWindow.Colormap; % display window colormap
+iopts.reject = 0; % percent of maxV/4 that is rejected
+iopts.persistMethod = 'none';
+iopts.pgain = 4; % sqrt(seq0.numPulse);
+ev(2).process.Parameters = namedargs2cell(iopts); % set modified valus
+
 
 % remove recon for pilot pulses
 recon = unique([vb.capture.recon]); % Recon
@@ -83,13 +89,41 @@ pt1; vs.Media = Media; % add simulation media
 % force in simulation mode for testing
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
+%% Callback function pre-processing
+% whether tx multiplexed
+tx_multi = max(sum(logical(us.seq.apodization(us.xdc)),1)) > 128;
+
+% pre-processing indexing
+evi = find(startsWith({vs.Event.info}, "Tx ")); % events with transmits
+txi = double(string(extractBetween({vs.Event(evi).info}, "Tx ", " - Ap"))); % physical transmit indices
+if tx_multi, txi = ceil(txi/2); end % to match duplication
+bfi = find(~ismember(txi, ppi)); % beamforming event indices
+
+global QUPS_BF_PARAMS; 
+QUPS_BF_PARAMS.ppi = ppi;
+QUPS_BF_PARAMS.rx_multi = us.xdc.numel > 128; % more elems than channels
+QUPS_BF_PARAMS.tx_multi = tx_multi; % more active tx elems than channels
+QUPS_BF_PARAMS.rcvbuf = 1; % matching Receive.bufnum
+QUPS_BF_PARAMS.evi = evi;
+QUPS_BF_PARAMS.bfi = bfi;
+
+% remove pilot pulses from Sequence/ChannelData definitions
+[usv, chdv, us, chd] = deal(us, chd, copy(us), copy(chd)); % store old, save new
+us.seq = seq0; % final sequence
+
+sz = size(chd.data);
+sz(chd.mdim) = nnz(~ismember(txi, ppi));
+chd.data = zeros(sz, 'like', chd.data);
+if tx_multi, chd.t0 = chd.t0(1:2:end); end % every other is true tx
+chd.t0 = chd.t0(~ismember(1:numel(chd.t0), ppi)); % skip pilot pulses
+
+
 %% save 
 conf_file = fullfile("MatFiles","qups-conf.mat"); % configuration
 filename = char(fullfile("MatFiles","qups-vsx.mat")); % Vantage
 save(filename, '-struct', 'vs');
 
 % save
-% [us, chd] = deal(us0, chd0);
 save(conf_file, "us", "chd");
 
 % clear external functions
@@ -97,22 +131,11 @@ clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
 
 % set save directory for data store (TODO: rename and document)
 global VSXOOD_SAVE_DIR;
-VSXOOD_SAVE_DIR = fullfile(pwd, "data/pilot-pulse-test"); % make a path relative to the current location
+VSXOOD_SAVE_DIR = fullfile(pwd, "data/pilot-pulse-test",string(datetime('now'),'yyMMddHHmmSS')); % make a path relative to the current location
+if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
 copyfile(conf_file, VSXOOD_SAVE_DIR);
 copyfile(filename , VSXOOD_SAVE_DIR);
 
-% pre-processing indexing
-evi = find(startsWith({vs.Event.info}, "Tx ")); % events with transmits
-txi = double(string(extractBetween({vs.Event(evi).info}, "Tx ", " - Ap"))); % physical transmit indices
-bfi = find(~ismember(txi, ppi)); % beamforming event indices
-
-global QUPS_BF_PARAMS; 
-QUPS_BF_PARAMS.ppi = ppi;
-QUPS_BF_PARAMS.rx_multi = true;
-QUPS_BF_PARAMS.tx_multi = false;
-QUPS_BF_PARAMS.rcvbuf = 1; % matching Receive.bufnum
-QUPS_BF_PARAMS.evi = evi;
-QUPS_BF_PARAMS.bfi = bfi;
 
 clear bfQUPS
 

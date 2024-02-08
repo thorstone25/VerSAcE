@@ -26,15 +26,22 @@ if isempty(us) || isempty(chd0)
     rcv = vs.Receive(prms.rxs);
     
     prms.i = cell2mat(cellfun(@colon, {rcv.startSample}, {rcv.endSample}, 'UniformOutput', false));
-    prms.k = [rcv.aperture] - 1; % amount to shift data
+    if isfield(rcv, 'aperture')
+        prms.k = [rcv.aperture] - 1; % amount to shift data
+    else
+        prms.k = zeros(1,numel(rcv));
+    end
+    prms.aps = vs.Trans.HVMux.ApertureES;
     
-    % remove pilot pulse t0s
-    sz = size(chd0.data);
-    R = sz(2) / size(chd0.t0,2); % ratio
-    chd0.t0 = chd0.t0(~ismember(1:size(chd0.t0,chd0.mdim), QUPS_BF_PARAMS.ppi));
-    sz(2) = R * size(chd0.t0,2); % new size (same ratio)
-    chd0.data = zeros(sz, 'like', chd0.data);
-    
+    % channel data input/output size pre/post aperture concatenation
+    if prms.rx_multi || prms.tx_multi
+        % de-multiplex the data
+        Mx = (1 + prms.rx_multi) * (1 + prms.tx_multi); % multiplexing size
+        sz = size(chd0.data,1:4); % og size
+        sz = [sz(1:chd0.mdim-1), Mx, chd0.M/Mx, sz(chd0.mdim+1:end)]; % multi in mdim (txs)
+        prms.isz = sz; % input data size
+        prms.osz = [sz(1:chd.mdim-1),sz(chd.mdim+1:end)]; % output data size
+    end    
 end
 
 if ~TOGGLE_bfQUPS
@@ -48,41 +55,30 @@ else
     chd = copy(chd0);
     tic;
     switch 3 % different ways of loading
-        case 1
-            chdo = ChannelData.Verasonics({RData}, vs.Receive(prms.rxs), vs.Trans);
-            chd.data(:,:,:,:,1) = chdo.data; % allocation trick
-        case 2
+        case 1 % safest - parse and load everything, then cast to single
             chdo = ChannelData.Verasonics({RData}, vs.Receive(prms.rxs), vs.Trans);
             chd.data = single(chdo.data);
-        case 3
-            chd.data(:,:,1:128,:,1) = reshape(RData(prms.i,:,:), chd0.T, chd0.M, 128, []); % (T x M x N' x F)
-            % x = cat(3,  chd.data, zeros(size(x,1:4)+[0,0,chd.N-2*128,0])); %  (T x M x N x F) pad to full size in elements
+        case 2 % two-step - parse and load everything, then input to implicit cast
+            chdo = ChannelData.Verasonics({RData}, vs.Receive(prms.rxs), vs.Trans);
+            chd.data(:,:,:,:,1) = chdo.data; % allocation trick
+        case 3 % optimal - load relevant data into pre-allocated array, then shift to parse
+            % load data 
+            x = reshape(RData(prms.i,:,:), chd0.T, chd0.M, 128, []); % (T x M x N' x F)
             
+            % send to ChannelData object
             for j = unique(prms.k) % each unique tx aperture
-                if j % skip 0
-                    chd.data(:,prms.k == j,:,:) = circshift(chd.data(:,prms.k == j,:,:), j, 3); % rx shift data over in the matching aperture
-                end
+                k = prms.k == j; % matching tx indices
+                a = prms.aps(:,j+1); % aperture indices
+                i = logical(a); % active rx elements
+                chd.data(:,k,i,:,1) = x(:,k,a(i),:); % send data to matching receive elements
             end
-            % chd.data = cast(x, 'like', chd.data); % load/cast
     end    
     
-    % demultiplex
+    % demultiplex by summing left/right apertures
     if rx_multi || tx_multi
-        % de-multiplex the time vector
-        if tx_multi
-            [t0, dim] = deal(chd.t0, chd.mdim);
-            i = 1:2:size(t0,dim); % de-multiplexed indices
-            assert(isalmostn(sub(t0,i+0,dim),sub(t0,i+1,dim)));
-            chd.t0 = sub(t0,i,dim);
-        end
-        
-        % de-multiplex the data
-        Mx = (1 + rx_multi) * (1 + tx_multi); % multiplexing size
-        sz = size(chd.data); % og size
-        sz = [sz(1:chd.mdim-1), Mx, chd.M/Mx, sz(chd.mdim+1:end)]; % mulit in mdim (txs)
-        chd.data = reshape(sum(reshape(chd.data, sz), chd.mdim), [sz(1:chd.mdim-1),sz(chd.mdim+1:end)]);
+        chd.data = reshape(sum(reshape(chd.data, prms.isz), chd.mdim), prms.osz);
     end
-    toc;
+    disp("Data loaded in " + toc() + " seconds."); % loading time
     
     % pre-process
     chd = hilbert(filter(chd, D));
