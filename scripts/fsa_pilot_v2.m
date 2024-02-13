@@ -43,6 +43,7 @@ F = 1;
 
 % constant resources
 vres = VSXResource(); % system-wide resource
+vres.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
 % excitation pulse
 vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
@@ -63,7 +64,8 @@ us.seq = SequenceGeneric('apod', txapd, 'del', txtau, 'c0', seq0.c0, 'numPulse',
 rxbuf = unique([cat(2,vb.capture.rcv).bufnum]);
 
 % add QUPS processing
-[ui, ev] = addReconFun("bfQUPS", rxbuf, us.scan, vres, 'UItyp', 'VsToggleButton');
+%{
+[ui, ev] = addReconFun("bfQUPS", rxbuf, us.scan, vres, 'UItyp', 'VsToggleButton', 'UIpos', "UserB4");
 [vb.vUI(end+(1:numel(ui))), vb.post(end+(1:numel(ev)))] = deal(ui, ev);
 iopts = struct(ev(2).process.Parameters{:}); % imaging process params
 % iopts.displayWindow.Colormap; % display window colormap
@@ -71,6 +73,11 @@ iopts.reject = 0; % percent of maxV/4 that is rejected
 iopts.persistMethod = 'none';
 iopts.pgain = 4; % sqrt(seq0.numPulse);
 ev(2).process.Parameters = namedargs2cell(iopts); % set modified valus
+%}
+
+% add sound speed estimation
+[ui, ev] = addDataFun("ceQUPS", rxbuf, 'UItyp', 'VsToggleButton', 'UIpos', "UserB5");
+[vb.vUI(end+(1:numel(ui))), vb.post(end+(1:numel(ev)))] = deal(ui, ev);
 
 
 % remove recon for pilot pulses
@@ -86,9 +93,6 @@ vs = link(vb, vres, Trans, 'TXPD', false); % link
 pt1; vs.Media = Media; % add simulation media
 % vs.Media.function = 'movePoints'; % make points move
 
-% force in simulation mode for testing
-vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
-
 %% Callback function pre-processing
 % whether tx multiplexed
 tx_multi = max(sum(logical(us.seq.apodization(us.xdc)),1)) > 128;
@@ -98,14 +102,6 @@ evi = find(startsWith({vs.Event.info}, "Tx ")); % events with transmits
 txi = double(string(extractBetween({vs.Event(evi).info}, "Tx ", " - Ap"))); % physical transmit indices
 if tx_multi, txi = ceil(txi/2); end % to match duplication
 bfi = find(~ismember(txi, ppi)); % beamforming event indices
-
-global QUPS_BF_PARAMS; 
-QUPS_BF_PARAMS.ppi = ppi;
-QUPS_BF_PARAMS.rx_multi = us.xdc.numel > 128; % more elems than channels
-QUPS_BF_PARAMS.tx_multi = tx_multi; % more active tx elems than channels
-QUPS_BF_PARAMS.rcvbuf = 1; % matching Receive.bufnum
-QUPS_BF_PARAMS.evi = evi;
-QUPS_BF_PARAMS.bfi = bfi;
 
 % remove pilot pulses from Sequence/ChannelData definitions
 [usv, chdv, us, chd] = deal(us, chd, copy(us), copy(chd)); % store old, save new
@@ -117,27 +113,43 @@ chd.data = zeros(sz, 'like', chd.data);
 if tx_multi, chd.t0 = chd.t0(1:2:end); end % every other is true tx
 chd.t0 = chd.t0(~ismember(1:numel(chd.t0), ppi)); % skip pilot pulses
 
+% pass beamforming params for bfQUPS
+global QUPS_BF_PARAMS; 
+QUPS_BF_PARAMS.ppi = ppi;
+QUPS_BF_PARAMS.rx_multi = us.xdc.numel > 128; % more elems than channels
+QUPS_BF_PARAMS.tx_multi = tx_multi; % more active tx elems than channels
+QUPS_BF_PARAMS.rcvbuf = 1; % matching Receive.bufnum
+QUPS_BF_PARAMS.evi = evi;
+QUPS_BF_PARAMS.bfi = bfi;
+QUPS_BF_PARAMS.D = chd.getPassbandFilter(us.xdc.bw);
+QUPS_BF_PARAMS.fig = 1; % figure number
+
 
 %% save 
 conf_file = fullfile("MatFiles","qups-conf.mat"); % configuration
 filename = char(fullfile("MatFiles","qups-vsx.mat")); % Vantage
 save(filename, '-struct', 'vs');
 
-% save
-save(conf_file, "us", "chd");
+% get a copy of this file
+setup_file = mfilename('fullpath');
+if ~isempty(setup_file) && ~startsWith(setup_file, tempdir)
+    code = readlines(setup_file); 
+else 
+    code = string.empty; 
+end
 
-% clear external functions
-clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
+% save
+save(conf_file, "us", "chd", "QUPS_BF_PARAMS", "code");
 
 % set save directory for data store (TODO: rename and document)
 global VSXOOD_SAVE_DIR;
 VSXOOD_SAVE_DIR = fullfile(pwd, "data/pilot-pulse-test",string(datetime('now'),'yyMMddHHmmSS')); % make a path relative to the current location
 if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
-copyfile(conf_file, VSXOOD_SAVE_DIR);
+copyfile(conf_file, VSXOOD_SAVE_DIR); % save a copy of og files too
 copyfile(filename , VSXOOD_SAVE_DIR);
 
-
-clear bfQUPS
+% clear external functions
+clear bfQUPS ceQUPS;% cEstFSA_RT;
 
 % VSX;
 
