@@ -2,8 +2,8 @@ function [vUI, vEvent] = addDataFun(fnm, vRcvBuf, vSeq, kwargs)
 arguments
     fnm (1,1) string % = "RFDataStore"
     vRcvBuf (1,1) VSXRcvBuffer
-    vSeq (1,:) VSXSeqControl = VSXSeqControl('command','returnToMatlab')
-    kwargs.name (1,1) string = "Do "+func2str(fnm);
+    vSeq (1,:) VSXSeqControl = [VSXSeqControl('command','returnToMatlab'), VSXSeqControl('command', 'noop', 'argument', 100/0.2)];
+    kwargs.name (1,1) string = "Do "+fnm;
     kwargs.UItyp (1,1) string {mustBeMember(kwargs.UItyp,["VsToggleButton", "VsPushButton", "None"])} = "None"
     kwargs.UIpos (1,1) string {mustBeMember(kwargs.UIpos, ["UserB1","UserB2","UserB3","UserB4","UserB5","UserB6","UserB7","UserB8","UserC1","UserC2","UserC3","UserC4","UserC5","UserC6","UserC7","UserC8","UserA1","UserA2"])} = "UserB1";
 end
