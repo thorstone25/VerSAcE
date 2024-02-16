@@ -1,26 +1,36 @@
 %% Construct a system
 % transducer
-% xdc_name = "L12-5 50mm"; % choose transducer
-xdc_name = "L12-3v"; % choose transducer
-c0 = 1500; % sound speed 
+% xdc_name = "P4-2v";
+% xdc_name = "C5-2v";
+% xdc_name = "L11-5";
+xdc_name = "L12-5 50mm"; % choose transducer
+% xdc_name = "L12-3v"; % choose transducer
+
+% sound speed
+c0 = 1500; 
+% c0 = 1550; 
+% c0 = 1475; 
+
 Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
 xdc = Transducer.Verasonics(Trans); % VSX -> QUPS
+lbda = c0*1e-3 / Trans.frequency;
 
-% imaging region
-scan = ScanCartesian('x', 1e-3*[-20 20], 'z', 1e-3*[0 50], 'y', 0);
+% imaging region (200 wavelengths)
+scan = ScanCartesian('x', 1e-3*[-30 30], 'z', 1e-3*ceil([0 200*lbda]), 'y', 0);
+scan.x = 1.1*sub(xdc.bounds,1,1); % set to transducer lateral boundaries
 
 % pulse sequences
 seq0 = Sequence('type','FSA','c0', c0, 'numPulse', xdc.numel); % FSA acquisition
 % seq0 = SequenceRadial('type','PW','c0', c0, 'angles',-23 : 2 : 23); % PW acquisition
-P = seq0.numPulse/8; % pilot every P pulses
+P = seq0.numPulse/16; % pilot every P pulses
 seqp = Sequence('type','VS' ,'c0', c0, 'focus', [0 0 50e-3]' * ones([1,1+seq0.numPulse/P])); % pilot pulses
 M = max(0, xdc.numel - 128) / 2; % buffer
-seqp.apodization_ = repmat([zeros(M,1);ones(xdc.numel-2*M,1);zeros(M,1)],[1,seqp.numPulse]); % restrict pilot pulses to within 128 elements to avoid tx multiplexing
+seqp.apd = repmat([zeros(M,1);ones(xdc.numel-2*M,1);zeros(M,1)],[1,seqp.numPulse]); % restrict pilot pulses to within 128 elements to avoid tx multiplexing
 
 % systems
 us0 = UltrasoundSystem('xdc', xdc, 'seq', seq0, 'scan', scan);
 usp = UltrasoundSystem('xdc', xdc, 'seq', seqp, 'scan', scan);
-[scan.dx, scan.dz] = deal(us0.lambda / 2);
+[scan.dx, scan.dz] = deal(us0.lambda / 4);
 
 % combine FSA and pilot sequences
 txapd0 = reshape(seq0.apodization(xdc), xdc.numel, P, []);
@@ -47,18 +57,18 @@ vres.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
 % excitation pulse
 vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
-vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage/2); % half max power
+vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % half max power
 
 us = copy(us0);
-us.seq = SequenceGeneric('apod', txapd, 'del', txtau, 'c0', seq0.c0, 'numPulse', size(txapd,2));
+us.seq = SequenceGeneric('apd', txapd, 'del', txtau, 'c0', seq0.c0, 'numPulse', size(txapd,2));
 
 % make VSX blocks: reference and pilot
 [vb, chd] = QUPS2VSX(us, Trans, vres ...
-    ,'range', [0 50]*1e-3  ...
-    ... ,'range', [0 us.scan.zb(2)] ...
+    ... ,'range', [0 50]*1e-3  ...
+    ,'range', [0 us.scan.zb(2)] ...
     ,'vTW', vTW, 'vTPC', vTPC ...
     ,"frames", F,'set_foci', false ...
-    ,'recon_VSX', false ...
+    ,'recon_VSX', true ...
     ,'recon_custom', false, 'saver_custom', true ...
     ); % ref
 rxbuf = unique([cat(2,vb.capture.rcv).bufnum]);
@@ -122,7 +132,7 @@ QUPS_BF_PARAMS.rcvbuf = 1; % matching Receive.bufnum
 QUPS_BF_PARAMS.evi = evi;
 QUPS_BF_PARAMS.bfi = bfi;
 QUPS_BF_PARAMS.D = chd.getPassbandFilter(us.xdc.bw);
-QUPS_BF_PARAMS.fig = 1; % figure number
+QUPS_BF_PARAMS.fig = 2; % figure number
 
 
 %% save 
@@ -131,7 +141,7 @@ filename = char(fullfile("MatFiles","qups-vsx.mat")); % Vantage
 save(filename, '-struct', 'vs');
 
 % get a copy of this file
-setup_file = mfilename('fullpath');
+setup_file = mfilename('fullpath') + ".m";
 if ~isempty(setup_file) && ~startsWith(setup_file, tempdir)
     code = readlines(setup_file); 
 else 
@@ -151,6 +161,12 @@ copyfile(filename , VSXOOD_SAVE_DIR);
 % clear external functions
 clear bfQUPS ceQUPS;% cEstFSA_RT;
 
-% VSX;
-
 %% 
+VSX;
+
+%%
+% because VSX clears the workspace
+global VSXOOD_SAVE_DIR;
+
+vs = update_vstruct();
+save(fullfile(VSXOOD_SAVE_DIR, 'qups-vsx-post.mat'), '-struct', 'vs');
