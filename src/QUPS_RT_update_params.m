@@ -11,10 +11,14 @@ if isfield(rcv, 'aperture')
 else
     prms.k = zeros(1,numel(rcv));
 end
-prms.aps = vs.Trans.HVMux.ApertureES;
+if isfield(vs.Trans, 'HVMux')
+    prms.aps = vs.Trans.HVMux.ApertureES;
+else
+    prms.aps = vs.Trans.Connector;
+end
 
 % peak delay in wavelengths (periods)
-t0 = [vs.TW([vs.TX(prms.txs).waveform]).peak];
+t0 = [vs.TW([vs.TX(prms.txs).waveform]).peak] + 2*vs.Trans.lensCorrection;
 t0 = swapdim(t0, 2, chd0.mdim); % move to tx dimension
 
 % channel data input/output size pre/post aperture concatenation
