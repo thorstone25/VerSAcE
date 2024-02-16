@@ -120,14 +120,14 @@ classdef VSXBlock < matlab.mixin.Copyable
                 aps = Trans.HVMux.ApertureES; % list of apertures
 
                 % get tx aperture indices
-                out = cellfun(@(ap) {find(all((~ap') | aps,1),1,'first')}, {vTx.Apod}); % choose first match active aperture
+                out = cellfun(@(apd) {apSelect(apd, aps, "buffer")}, {vTx.Apod}); % choose first match active aperture
                 eind = cellfun(@isempty, out); % empty indices
                 if any(eind), error("VSXBlock:apertureUnavailable","Unable to find any aperture to satisfy transmit " ...
                         + join(cellstr({vEvent(itx(eind)).info}), ", ") + "."); end
                 [vTx.aperture] = deal(out{:});
 
                 % get rx aperture indices
-                out = cellfun(@(ap) {find(all((~ap') | aps,1),1,'first')}, {vRcv.Apod}); % choose first match active aperture
+                out = cellfun(@(apd) {apSelect(apd, aps, "buffer")}, {vRcv.Apod}); % choose first match active aperture
                 eind = cellfun(@isempty, out); % empty indices
                 if any(eind), error("VSXBlock:apertureUnavailble","Unable to find any aperture to satisfy receive " ...
                         + join(string(vEvent(irx(eind)).info), ", ") + "."); end
@@ -360,7 +360,7 @@ classdef VSXBlock < matlab.mixin.Copyable
                         evalin('base', "TX(j).TXPD = computeTXPD(TX(j), PData(Recon(i).pdatanum));") % requires global vars
                     end
                 end
-                
+
                 % restore swap local/global workspace vars
                 for f = nms(exl), vStruct.(f) = evalin("base", f); end % copy global to local 
                 evalin("base", join(["clearvars", nms(exl)], " ")); % delete all local vars temp. copied to base
@@ -737,4 +737,35 @@ if isfield(s, f) && all(cellfun(@isempty, {s.(f)}))
 end
 
 
+end
+
+function i = apSelect(apd, aps, mode)
+arguments
+    apd (:,1) {mustBeNumericOrLogical} % elems
+    aps (:,:) {mustBeNumericOrLogical} % elems x apertures
+    mode (1,1) string {mustBeMember(mode, ["first", "last", "median", "buffer"])} = "buffer"
+end
+val = all((~apd) | aps, 1); % elems off or aperture active -> valid aperture
+if isempty(val), i = []; return; end % short-circuit on invalid apertures
+switch mode
+    case {'first', 'last'}
+        i = find(val, 1, mode);
+    case {'median'}
+        i = find(val);
+        i = i(ceil(numel(i)/2)); % center aperture
+    case "buffer"
+        caps = num2cell(aps(:,val),1); % place each aperture in a cell
+        capd = num2cell(aps(:,val) & apd,1); % same with overlap
+
+        % get start and end of aperture/apodization
+        saps = cellfun(@(x)find(x,1,'first'), caps);
+        eaps = cellfun(@(x)find(x,1,'last' ), caps);
+        sapd = cellfun(@(x)find(x,1,'first'), capd);
+        eapd = cellfun(@(x)find(x,1,'last' ), capd);
+
+        % get max buffer index
+        i = argmax(min(abs(saps - sapd),abs(eaps - eapd))); % max the min dist from aperture start/end to apodization start/end
+        j = find(val); 
+        i = j(i);
+end
 end
