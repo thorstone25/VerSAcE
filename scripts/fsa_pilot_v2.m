@@ -1,9 +1,9 @@
 %% Construct a system
 % transducer
-% xdc_name = "P4-2v";
+xdc_name = "P4-2v";
 % xdc_name = "C5-2v";
 % xdc_name = "L11-5";
-xdc_name = "L12-5 50mm"; % choose transducer
+% xdc_name = "L12-5 50mm"; % choose transducer
 % xdc_name = "L12-3v"; % choose transducer
 
 % sound speed
@@ -17,13 +17,13 @@ lbda = c0*1e-3 / Trans.frequency;
 
 % imaging region (200 wavelengths)
 scan = ScanCartesian('x', 1e-3*[-30 30], 'z', 1e-3*ceil([0 200*lbda]), 'y', 0);
-scan.x = 1.1*sub(xdc.bounds,1,1); % set to transducer lateral boundaries
+% scan.x = 1.1*sub(xdc.bounds,1,1); % set to transducer lateral boundaries
 
 % pulse sequences
 seq0 = Sequence('type','FSA','c0', c0, 'numPulse', xdc.numel); % FSA acquisition
 % seq0 = SequenceRadial('type','PW','c0', c0, 'angles',-23 : 2 : 23); % PW acquisition
 P = seq0.numPulse/16; % pilot every P pulses
-seqp = Sequence('type','VS' ,'c0', c0, 'focus', [0 0 50e-3]' * ones([1,1+seq0.numPulse/P])); % pilot pulses
+seqp = Sequence('type','FC' ,'c0', c0, 'focus', [0 0 50e-3]' * ones([1,1+seq0.numPulse/P])); % pilot pulses
 M = max(0, xdc.numel - 128) / 2; % buffer
 seqp.apd = repmat([zeros(M,1);ones(xdc.numel-2*M,1);zeros(M,1)],[1,seqp.numPulse]); % restrict pilot pulses to within 128 elements to avoid tx multiplexing
 
