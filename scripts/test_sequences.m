@@ -3,11 +3,14 @@
  %% Create different system configurations
 c0 = 1500; % sound speed
 % xdc_name = "L12-3v"; % choose transducer
-xdc_name = "L12-5 50mm"; % choose transducer
+% xdc_name = "L12-5 50mm"; % choose transducer
+xdc_name = "P4-2v";
 Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
 xdc = Transducer.Verasonics(Trans);
 uss = UltrasoundSystem('xdc', xdc); 
 uss.seq.c0 = c0;
+uss.scan.zb(2) = 150 * uss.lambda;
+uss.scan.xb = 1e-3 * [-40 40];
 [uss.scan.dx, uss.scan.dz] = deal(uss.lambda / 2);
 
 apd_center = false; % use only ceneter aperture
@@ -15,14 +18,14 @@ apd_center = false; % use only ceneter aperture
 % sequences
 pf = [0;0;50e-3] + [1e-3;0;0] .* (-20 : 5 : 20);
 seqfsa = Sequence(     'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel);
-seqpw = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -25 : 2.5 : 25); 
-seqfc = Sequence(      'type', 'VS' , 'c0', c0, 'focus', pf);
+seqpw = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -25 : 0.5 : 25); 
+seqfc = Sequence(      'type', 'FC' , 'c0', c0, 'focus', pf);
 
 % spatial downsampling
 Ds = 4; 
 seqfsadv = Sequence(  'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel / Ds);
-seqfsadv.apodization_ = zeros([xdc.numel, seqfsadv.numPulse]);
-seqfsadv.apodization_(1:Ds:end,:) = eye(xdc.numel / Ds);
+seqfsadv.apd = zeros([xdc.numel, seqfsadv.numPulse]);
+seqfsadv.apd(1:Ds:end,:) = eye(xdc.numel / Ds);
 
 uss = copy(repmat(uss, [1,4]));
 [uss.seq] = deal(seqfsa, seqpw, seqfc, seqfsadv);
@@ -30,29 +33,40 @@ uss = copy(repmat(uss, [1,4]));
 
 %%
 % selection
-seq_ind = 3; % sequence index
+seq_ind = [2 4]; % sequence index
 us = copy(uss(seq_ind)); % choose pulse sequence template
-if apd_center
-    N = min(128, us.xdc.numel);% active aperture size
+if false && apd_center
+    N = min(128, us.xdc.numel); % active aperture size
     apd = circshift([ones(1,N), zeros(1,us.xdc.numel-N)], (us.xdc.numel-N)/2)';
     us.seq.apodization_ = repmat(apd, [1 us.seq.numPulse]);
 end
+
 % constant resources
 vres = VSXResource(); % system-wide resource
 vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
 vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 
 % make blocks
-[vb, chd] = QUPS2VSX(us, Trans, vres, "frames", 1 ...
+for i = 1:numel(us)
+[vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres, "frames", 1 ...
     ,'vTW', vTW, 'vTPC', vTPC ...
-    ,'recon_VSX', true ...
-    ,'saver_custom', true ...
+    ,'recon_VSX', any(i == 1) ...
+    ,'saver_custom', false ...
     ,'set_foci', true ...
+    ,'range', [0 us(i).scan.zb]*1e-3 ... in m
     ,'range', [0 200]*1e-3 ... in m
 ); % make VSX block
+end
+
+% connect blocks
+vb(1).next = vb(2).capture(1);
+vb(2).next = vb(1).capture(1);
 
 % set peak cut-off for VSX imaging
-txs = cat(2,vb.capture.tx);
+vec = @(x)x(:);
+evs = arrayfun(@(x) {vec(x.capture(:))'}, vb);
+evs = [evs{:}];
+txs = [evs.tx];
 [txs.peakCutOff] = deal(2);
 
 % Terminate when done acquiring (not working ...)
@@ -103,6 +117,6 @@ if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
 
-% VSX;
+VSX;
 
 %% 
