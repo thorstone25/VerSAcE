@@ -512,12 +512,14 @@ arguments
     kwargs.display (1,1) logical = true
 end
 
+nm = "RFDataImg"; % function name
+
 % PData
 if isempty(vPData), vPData = VSXPData.QUPS(scan); end
 
 % Image buffer
 vbuf_inter = VSXInterBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames); 
-vbuf_im = VSXImageBuffer.fromPData(vPData);
+vbuf_im    = VSXImageBuffer.fromPData(vPData);
 
 % Display window
 vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
@@ -528,7 +530,6 @@ vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
     );
 
 % Process
-nm = "RFDataImg"; % function name
 compute_image_process = VSXProcess('classname', 'External', 'method', nm);
 compute_image_process.Parameters = {
     'srcbuffer','receive',...
@@ -589,18 +590,20 @@ arguments
     vbuf_rx (1,1) VSXRcvBuffer
     vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
 end
+
+nm = "RFDataProc";
 %% Add custom data processing
-proc_rf_data = VSXProcess('classname', 'External', 'method', 'RFDataProc');
-proc_rf_data.Parameters = {                                                     
+proc_rf_data = VSXProcess('classname', 'External', 'method', nm, 'Parameters',{...);
+% proc_rf_data.Parameters = {                                                     
     'srcbuffer','receive',...                                                   
     'srcbufnum', vbuf_rx,...                                                    
     'srcframenum',0,...                                                         
-    'dstbuffer','none'};                                                        
+    'dstbuffer','none'});
 
 vUI = VSXUI( ...
-'Control', {'UserB2','Style','VsToggleButton','Label', 'Process RFData', 'Callback', @doRFDataProc}, ...
-'Statement', cellstr(["global TOGGLE_RFDataProc; TOGGLE_RFDataProc = false; return;"]), ... init
-'Callback', cellstr(["doRFDataProc(varargin)", "global TOGGLE_RFDataProc; TOGGLE_RFDataProc = logical(UIState); return;"]) ...
+'Control', {'UserB2','Style','VsToggleButton','Label', 'Process RFData', 'Callback', str2func("do"+nm)}, ...
+'Statement', cellstr(["global TOGGLE_"+nm+"; TOGGLE_"+nm+" = false; return;"]), ... init
+'Callback', cellstr(["do"+nm+"(varargin)", "global TOGGLE_"+nm+"; TOGGLE_"+nm+" = logical(UIState); return;"]) ...
 );
 
 % process RF Data
@@ -611,18 +614,18 @@ arguments
     vbuf_rx (1,1) VSXRcvBuffer
     vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
 end
-
+nm = "RFDataStore";
 %% Process: saving data
-save_rf_data = VSXProcess('classname', 'External', 'method', 'RFDataStore');
-save_rf_data.Parameters = {
+save_rf_data = VSXProcess('classname', 'External', 'method', nm, 'Parameters',{ ...);
+... save_rf_data.Parameters = {
     'srcbuffer','receive',...
     'srcbufnum', vbuf_rx,... 
     'srcframenum',0,...
-    'dstbuffer','none'};
+    'dstbuffer','none'});
 
 vUI = VSXUI( ...
-'Control', {'UserB1','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', @doRFDataStore}, ...
-'Callback', cellstr(["doRFDataStore(varargin)", "global TOGGLE_RFDataStore; TOGGLE_RFDataStore = true; return;"]) ...
+'Control', {'UserB1','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', str2func("do"+nm)}, ...
+'Callback', cellstr(["do"+nm+"(varargin)", "global TOGGLE_"+nm+"; TOGGLE_"+nm+" = true; return;"]) ...
 );
 
 % save all RF Data
