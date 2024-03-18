@@ -310,7 +310,7 @@ vEvent = reshape(vEvent, [prod(size(vEvent,1:2)), size(vEvent,3)]); % combine rx
 % make recon image and return to MATLAB
 if kwargs.recon_VSX
     return_to_matlab = VSXSeqControl('command', 'returnToMatlab');
-    [recon_event] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, 'multipage', false, 'numFrames', 1+0*kwargs.frames, 'apod', kwargs.apod);
+    [recon_event] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, 'multipage', false, 'numFrames', kwargs.frames, 'apod', kwargs.apod);
     recon_event.recon.newFrameTimeout = 50 * 1e-3*wait_for_pulse_sequence.argument; % wait time in msec ~ heuristic is approx 50 x acquisition time
     vEvent(end+1,:) = recon_event; % assign to end of TX-loop
     vEvent(end,:) = copy(vEvent(end,:)); % copy to make unique Events for each frame
@@ -385,23 +385,30 @@ assert(all(any(size(kwargs.apod,1:5) == [[scan.size,Tx,kwargs.numFrames]; ones(1
 
 %% ReconInfo
 % We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vRcv,1:2)));  % default is to accumulate IQ data.
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ', 'pre', "clearImageBuf", 'post', 'IQ2IntensityImageBufAdd'), size(vRcv,1:2)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
+for k = 1%:size(vReconInfo,3)
 for i = 1:size(vReconInfo,1) % for each rx of the reconinfo object (multiplexing)
 for j = 1:size(vReconInfo,2) % for each tx of the reconinfo object
-    [vReconInfo(i,j,:).txnum    ] = deal(vTX(   j)); % tx
-    [vReconInfo(i,j,:).rcvnum   ] = deal(vRcv(i,j)); % rx
-    [vReconInfo(i,j,:).regionnum] = deal(       j );% region index TODO: VSXRegion
+    [vReconInfo(i,j,k).txnum    ] = deal(vTX(   j)); % tx
+    [vReconInfo(i,j,k).rcvnum   ] = deal(vRcv(i,j)); % rx
+    [vReconInfo(i,j,k).regionnum] = deal(       j );% region index TODO: VSXRegion
     if kwargs.multipage
-        [vReconInfo(i,j,:).pagenum] = deal(sub2ind(size(vReconInfo),i,j)); % page number
+        [vReconInfo(i,j,k).pagenum] = deal(sub2ind(size(vReconInfo),i,j,k)); % page number
     end
 end
 end
+end
 vReconInfo( 1 ).mode = 'replaceIQ'; % on first tx, replace IQ data
-vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % on last tx, accum and "detect"
+% vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % on last tx, accum and "detect"
 
-if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx
+% threadsync conflict? Overlapping regions are processed in parallel, so
+% this introduces a race conditions if they overlap
+ts = (any( (sum(kwargs.apod,4) > 1) .* kwargs.apod , 1:3)); % Tx x F
+[vReconInfo.threadSync] = deal(any(ts,'all')); %%% TODO: can we sort into independent groups, shuffle to trick the FPGA, and compute this ind. per region?
+
+% if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx
 
 %% PData
 % create the pixel data
@@ -426,7 +433,7 @@ vPData.Region = cellfun(@(LA, NP) struct('Shape', struct('Name','Custom'), 'Pixe
 
 % fill out the regions
 % TODO: VSXRegion
-vPData.Region = computeRegions(struct(vPData));
+% vPData.Region = computeRegions(struct(vPData));
 
 %% Make Buffers
 % if inter(mediate) buffers needed, create one
@@ -445,7 +452,7 @@ else
 end
 
 % if image buffers needed, create one
-if any(contains([vReconInfo.mode], "Intensity"))
+if any(contains([[vReconInfo.mode], [vReconInfo.Post]], "Intensity"))
     vbuf_im = VSXImageBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames);
 else
     vbuf_im = VSXImageBuffer.empty; % no buffer
