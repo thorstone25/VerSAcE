@@ -30,11 +30,21 @@ seqfsadv.apd(1:Ds:end,:) = eye(xdc.numel / Ds);
 uss = copy(repmat(uss, [1,4]));
 [uss.seq] = deal(seqfsa, seqpw, seqfc, seqfsadv);
 
+% apodization schemes
+apod0 = cell([1, numel(uss)]);
+for i = 1:numel(uss)
+    switch uss(i).seq.type
+        case "FSA", apod0{i} = uss(i).apAcceptanceAngle(45);
+        case "PW",  apod0{i} = swapdim(uss(i).apTxParallelogram(uss(i).seq.angles),4,5);
+        case "FC",  apod0{i} = swapdim(uss(i).apMultiline(),4,5);
+        case "DV",  apod0{i} = uss(i).apAcceptanceAngle(45);
+    end
+end
 
 %%
 % selection
 seq_ind = [2 4]; % sequence index
-us = copy(uss(seq_ind)); % choose pulse sequence template
+[us, apod] = deal(copy(uss(seq_ind)), apod0(seq_ind)); % choose pulse sequence template
 if false && apd_center
     N = min(128, us.xdc.numel); % active aperture size
     apd = circshift([ones(1,N), zeros(1,us.xdc.numel-N)], (us.xdc.numel-N)/2)';
@@ -48,7 +58,8 @@ vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 
 % make blocks
 for i = 1:numel(us)
-[vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres, "frames", 1 ...
+[vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres, "apod", apod{i} ...
+    ,"frames", 4 ...
     ,'vTW', vTW, 'vTPC', vTPC ...
     ,'recon_VSX', any(i == 1) ...
     ,'saver_custom', false ...
@@ -117,6 +128,6 @@ if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
 
-VSX;
+% VSX;
 
 %% 

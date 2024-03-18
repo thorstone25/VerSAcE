@@ -81,6 +81,7 @@ arguments
     us (1,1) UltrasoundSystem
     xdc (1,1) {mustBeA(xdc, ["string", "struct", "Transducer"])} = us.xdc % transducer name
     vResource (1,1) VSXResource = VSXResource()
+    kwargs.apod (:,:,:,:,1) = 1; % image apodization per tx
     kwargs.units (1,1) string {mustBeMember(kwargs.units, ["mm", "wavelengths"])} = "mm"
     kwargs.vTW (1,:) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 1, 1]);
     kwargs.vTGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC( ...
@@ -309,7 +310,7 @@ vEvent = reshape(vEvent, [prod(size(vEvent,1:2)), size(vEvent,3)]); % combine rx
 % make recon image and return to MATLAB
 if kwargs.recon_VSX
     return_to_matlab = VSXSeqControl('command', 'returnToMatlab');
-    [recon_event] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, 'multipage', false, 'numFrames', kwargs.frames);
+    [recon_event] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, 'multipage', false, 'numFrames', 1+0*kwargs.frames, 'apod', kwargs.apod);
     recon_event.recon.newFrameTimeout = 50 * 1e-3*wait_for_pulse_sequence.argument; % wait time in msec ~ heuristic is approx 50 x acquisition time
     vEvent(end+1,:) = recon_event; % assign to end of TX-loop
     vEvent(end,:) = copy(vEvent(end,:)); % copy to make unique Events for each frame
@@ -369,19 +370,31 @@ arguments
     kwargs.numFrames (1,1) double = 1
     kwargs.multipage (1,1) logical = false
     kwargs.display (1,1) logical = true
+    kwargs.apod (:,:,:,:,:) {mustBeNumericOrLogical} = 1
 end
+
+%% Validate sizing
+Tx = prod(size(vRcv,1:2));
+assert(all(any(size(kwargs.apod,1:5) == [[scan.size,Tx,kwargs.numFrames]; ones(1,5)],1)), ...
+    "The size of the apodization(" +...
+    join(string(size(kwargs.apod,1:5)),", ") +...
+    ") must be compatible with the scan (" + ...
+    join(string(scan.size),", ") +...
+    ") and the number of transmits (" + Tx + ")." ...
+);
+
 %% ReconInfo
 % We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vRcv)));  % default is to accumulate IQ data.
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vRcv,1:2)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
-for i = 1:size(vReconInfo,1) % for each rx of the reconinfo object
+for i = 1:size(vReconInfo,1) % for each rx of the reconinfo object (multiplexing)
 for j = 1:size(vReconInfo,2) % for each tx of the reconinfo object
-    vReconInfo(i,j).txnum  = vTX(   j); % tx
-    vReconInfo(i,j).rcvnum = vRcv(i,j); % rx
-    vReconInfo(i,j).regionnum =     j ; % region index TODO: VSXRegion
+    [vReconInfo(i,j,:).txnum    ] = deal(vTX(   j)); % tx
+    [vReconInfo(i,j,:).rcvnum   ] = deal(vRcv(i,j)); % rx
+    [vReconInfo(i,j,:).regionnum] = deal(       j );% region index TODO: VSXRegion
     if kwargs.multipage
-        vReconInfo(i,j).pagenum = sub2ind(size(vReconInfo),i,j); % page number
+        [vReconInfo(i,j,:).pagenum] = deal(sub2ind(size(vReconInfo),i,j)); % page number
     end
 end
 end
@@ -394,9 +407,22 @@ if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx
 % create the pixel data
 vPData = VSXPData.QUPS(scan);
 
+% get the apodization in it's full size
+ap = logical(kwargs.apod); % mask
+Psz = [scan.size prod(size(vRcv,1:2)), size(vRcv,3)]; % full sizs (I x Tx x F)
+ap = repmat(ap, Psz ./ size(ap,1:5)); % explicit brodcast
+
+% convert to address / count format
+aps = num2cell(ap, 1:3); % pack pixels per cell
+cnt  = cellfun(@nnz,   aps,  "UniformOutput", false); % number of pixels
+addr = cellfun(@find,  aps,  "UniformOutput", false); % linear address (1-based)
+addr = cellfun(@int32, addr, "UniformOutput", false); % to int
+addr = cellfun(@(x)x-1,addr, "UniformOutput", false); % to 0-based
+
 % create a default region for each transmit
 % TODO: VSXRegion
-vPData.Region = repmat(struct('Shape', struct('Name','Custom'), 'PixelsLA', int32(0:scan.nPix-1), 'numPixels', scan.nPix), [1 numel(vReconInfo)]);
+% vPData.Region = repmat(struct('Shape', struct('Name','Custom'), 'PixelsLA', int32(0:scan.nPix-1), 'numPixels', scan.nPix), [1 numel(vReconInfo)]);
+vPData.Region = cellfun(@(LA, NP) struct('Shape', struct('Name','Custom'), 'PixelsLA', LA, 'numPixels', NP), addr(1:Tx), cnt(1:Tx));
 
 % fill out the regions
 % TODO: VSXRegion
