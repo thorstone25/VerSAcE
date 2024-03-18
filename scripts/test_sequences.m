@@ -32,12 +32,12 @@ uss = copy(repmat(uss, [1,4]));
 
 % apodization schemes
 apod0 = cell([1, numel(uss)]);
-for i = 1:numel(uss)
-    switch uss(i).seq.type
-        case "FSA", apod0{i} = uss(i).apAcceptanceAngle(45);
-        case "PW",  apod0{i} = swapdim(apTxParallelogram(uss(i),uss(i).seq.angles, [-15 15]),4,5);
-        case "FC",  apod0{i} = swapdim(uss(i).apMultiline(),4,5);
-        case "DV",  apod0{i} = sub(uss(i).apAcceptanceAngle(45),1:uss(i).seq.numPulse,4);
+for i = numel(uss):-1:1
+    switch i
+      case 1, apod0{i} = uss(i).apAcceptanceAngle(45);
+      case 2, apod0{i} = swapdim(apTxParallelogram(uss(i),uss(i).seq.angles, [-15 15]),4,5);
+      case 3, apod0{i} = swapdim(uss(i).apMultiline(),4,5);
+      case 4, apod0{i} = sub(uss(i).apAcceptanceAngle(45),1:Ds:uss(i).xdc.numel,4);
     end
 end
 
@@ -59,9 +59,9 @@ vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 % make blocks
 for i = 1:numel(us)
 [vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres, "apod", apod{i} ...
-    ,"frames", 1 ...
+    ,"frames", 4 ...
     ,'vTW', vTW, 'vTPC', vTPC ...
-    ,'recon_VSX', any(i == 1) ...
+    ,'recon_VSX', true ...
     ,'saver_custom', false ...
     ,'set_foci', true ...
     ,'range', [0 us(i).scan.zb]*1e-3 ... in m
@@ -103,7 +103,7 @@ end
 
 %% convert to VSX structures
 global vs; % make global to access in within function
-vs = link(vb, vres, Trans, 'TXPD', true); % link
+vs = link(vb, vres, Trans, 'TXPD', false); % link
 pt1; vs.Media = Media; % add simulation media
 
 % DEBUG: test the manual receive delays
