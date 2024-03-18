@@ -35,9 +35,9 @@ apod0 = cell([1, numel(uss)]);
 for i = 1:numel(uss)
     switch uss(i).seq.type
         case "FSA", apod0{i} = uss(i).apAcceptanceAngle(45);
-        case "PW",  apod0{i} = swapdim(uss(i).apTxParallelogram(uss(i).seq.angles),4,5);
+        case "PW",  apod0{i} = swapdim(apTxParallelogram(uss(i),uss(i).seq.angles, [-15 15]),4,5);
         case "FC",  apod0{i} = swapdim(uss(i).apMultiline(),4,5);
-        case "DV",  apod0{i} = uss(i).apAcceptanceAngle(45);
+        case "DV",  apod0{i} = sub(uss(i).apAcceptanceAngle(45),1:uss(i).seq.numPulse,4);
     end
 end
 
@@ -59,7 +59,7 @@ vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 % make blocks
 for i = 1:numel(us)
 [vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres, "apod", apod{i} ...
-    ,"frames", 4 ...
+    ,"frames", 1 ...
     ,'vTW', vTW, 'vTPC', vTPC ...
     ,'recon_VSX', any(i == 1) ...
     ,'saver_custom', false ...
