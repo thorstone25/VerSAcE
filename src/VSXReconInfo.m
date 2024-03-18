@@ -16,7 +16,7 @@ classdef VSXReconInfo < matlab.mixin.Copyable
             ])} = "replaceIQ" % pixel buffer modification behaviour
         txnum (1,1) VSXTX % transmit event
         rcvnum (1,1) VSXReceive % receive event
-        regionnum {mustBeScalarOrEmpty} = [] % PData.region index -> 1 if no regions
+        regionnum {mustBeScalarOrEmpty} = 1 % PData.region index -> 1 if no regions
         pagenum {mustBeScalarOrEmpty} = [] % interbuffer page number
         normPower (1,1) double = 1; % normalization exponent for multiplying signals
         normWeight (1,1) double = 1; % normalization coefficient for adding signals

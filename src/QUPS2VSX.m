@@ -385,7 +385,7 @@ assert(all(any(size(kwargs.apod,1:5) == [[scan.size,Tx,kwargs.numFrames]; ones(1
 
 %% ReconInfo
 % We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ', 'pre', "clearImageBuf", 'post', 'IQ2IntensityImageBufAdd'), size(vRcv,1:2)));  % default is to accumulate IQ data.
+vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vRcv,1:2)));  % default is to accumulate IQ data.
 
 % - Set specific ReconInfo attributes.
 for k = 1%:size(vReconInfo,3)
@@ -400,12 +400,16 @@ for j = 1:size(vReconInfo,2) % for each tx of the reconinfo object
 end
 end
 end
-vReconInfo( 1 ).mode = 'replaceIQ'; % on first tx, replace IQ data
+
+vReconInfo( 1 ).Pre  = "clearInterBuf"; % clear accumulator on init
+vReconInfo(end).Post = "IQ2IntensityImageBuf"; % copy result 
+
+% vReconInfo( 1 ).mode = 'replaceIQ'; % on first tx, replace IQ data
 % vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % on last tx, accum and "detect"
 
 % threadsync conflict? Overlapping regions are processed in parallel, so
 % this introduces a race conditions if they overlap
-ts = (any( (sum(kwargs.apod,4) > 1) .* kwargs.apod , 1:3)); % Tx x F
+ts = (any( (sum(kwargs.apod,4:5) > 1) .* kwargs.apod , 1:3)); % Tx x F
 [vReconInfo.threadSync] = deal(any(ts,'all')); %%% TODO: can we sort into independent groups, shuffle to trick the FPGA, and compute this ind. per region?
 
 % if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx

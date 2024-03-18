@@ -171,6 +171,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             Receive     = rmifempty(Receive, 'aperture');
             Recon       = rmifempty(Recon, 'rcvLUT');
             ReconInfo   = rmifempty(ReconInfo, 'LUT');
+            ReconInfo   = rmifempty(ReconInfo, 'pagenum');
             Resource    = rmifempty(Resource, 'RcvBuffer');
             Resource    = rmifempty(Resource, 'InterBuffer');
             Resource    = rmifempty(Resource, 'ImageBuffer');
