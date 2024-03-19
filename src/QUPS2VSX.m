@@ -141,7 +141,7 @@ if M > vResource.Parameters.numTransmit
     warning("QUPS2VSX:multiplexTX", ...
         "Multiplexing the transmit aperture to satisfy the number of transmit channels." ...
         );
-    seq = multiplex(seq, xdc, vResource.Parameters.numTransmit);
+    [seq, kwargs.apod] = multiplex(seq, xdc, vResource.Parameters.numTransmit, 'apod', kwargs.apod);
 end
 
 % receive multiplexing factor
@@ -374,7 +374,7 @@ arguments
 end
 
 %% Validate sizing
-Tx = prod(size(vRcv,1:2));
+Tx = prod(size(vRcv,2));
 assert(all(any(size(kwargs.apod,1:5) == [[scan.size,Tx,kwargs.numFrames]; ones(1,5)],1)), ...
     "The size of the apodization(" +...
     join(string(size(kwargs.apod,1:5)),", ") +...
@@ -420,7 +420,7 @@ vPData = VSXPData.QUPS(scan);
 
 % get the apodization in it's full size
 ap = logical(kwargs.apod); % mask
-Psz = [scan.size prod(size(vRcv,1:2)), size(vRcv,3)]; % full sizs (I x Tx x F)
+Psz = [scan.size Tx, 1+0*size(vRcv,3)]; % full sizs (I x Tx x [1*|F])
 ap = repmat(ap, Psz ./ size(ap,1:5)); % explicit brodcast
 
 % convert to address / count format
@@ -429,6 +429,9 @@ cnt  = cellfun(@nnz,   aps,  "UniformOutput", false); % number of pixels
 addr = cellfun(@find,  aps,  "UniformOutput", false); % linear address (1-based)
 addr = cellfun(@int32, addr, "UniformOutput", false); % to int
 addr = cellfun(@(x)x-1,addr, "UniformOutput", false); % to 0-based
+
+%  sanity check
+assert(all([cnt{:}] < scan.nPix), "Detected index attempt higher than the number of pixels - this is a bug!");
 
 % create a default region for each transmit
 % TODO: VSXRegion
