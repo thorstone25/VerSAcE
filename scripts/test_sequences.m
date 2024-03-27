@@ -2,9 +2,9 @@
  
  %% Create different system configurations
 c0 = 1500; % sound speed
-% xdc_name = "L12-3v"; % choose transducer
+xdc_name = "L12-3v"; % choose transducer
 % xdc_name = "L12-5 50mm"; % choose transducer
-xdc_name = "P4-2v";
+% xdc_name = "P4-2v";
 Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
 xdc = Transducer.Verasonics(Trans);
 uss = UltrasoundSystem('xdc', xdc); 
@@ -16,10 +16,11 @@ uss.scan.xb = 1e-3 * [-40 40];
 apd_center = false; % use only ceneter aperture
 
 % sequences
-pf = [0;0;50e-3] + [1e-3;0;0] .* (-20 : 5 : 20);
-seqfsa = Sequence(     'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel);
-seqpw = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -25 : 0.5 : 25); 
-seqfc = Sequence(      'type', 'FC' , 'c0', c0, 'focus', pf);
+apd   = Sequence.apWalking(xdc.numel,xdc.numel/4,2); % active aperture
+pf    = xdc.focActive(apd, 50e-3);
+seqfc  = Sequence(      'type', 'FC' , 'c0', c0, 'focus', pf, 'apd', apd);
+seqfsa = Sequence(      'type', 'FSA', 'c0', c0, 'numPulse', xdc.numel);
+seqpw  = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -25 : 0.5 : 25);
 
 % spatial downsampling
 Ds = 4; 
@@ -43,7 +44,7 @@ end
 
 %%
 % selection
-seq_ind = [2 4]; % sequence index
+seq_ind = [3 2]; % sequence index
 [us, apod] = deal(copy(uss(seq_ind)), apod0(seq_ind)); % choose pulse sequence template
 if false && apd_center
     N = min(128, us.xdc.numel); % active aperture size
@@ -53,7 +54,7 @@ end
 
 % constant resources
 vres = VSXResource(); % system-wide resource
-vTW = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
+vTW  = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 1, 1]); % tx waveform
 vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 
 % make blocks
@@ -64,21 +65,22 @@ for i = 1:numel(us)
     ,'recon_VSX', true ...
     ,'saver_custom', false ...
     ,'set_foci', true ...
-    ,'range', [0 us(i).scan.zb]*1e-3 ... in m
+    ,'range', [0 us(i).scan.zb] ... in m
     ,'range', [0 200]*1e-3 ... in m
 ); % make VSX block
 end
 
-% connect blocks
-vb(1).next = vb(2).capture(1);
-vb(2).next = vb(1).capture(1);
+% connect multiple blocks (set the 'next' prop to first 'capture')
+[vb(1:end-1).next] = dealfun(@(x)x(1), vb(2:end).capture); % each to next
+vb(end).next = vb(1).capture(1); % last to first
 
-% set peak cut-off for VSX imaging
-vec = @(x)x(:);
-evs = arrayfun(@(x) {vec(x.capture(:))'}, vb);
-evs = [evs{:}];
-txs = [evs.tx];
-[txs.peakCutOff] = deal(2);
+% set peak cut-off for VSX imaging (heuristic)
+for i = 1:numel(us)
+    txs = [cat(2,cat(2,vb(i).capture).tx)];
+    txpow = 2 * (sum(us(i).seq.apodization(us(i).xdc),1) ./ us(i).xdc.numel); % total weight per tx
+    txpow = max(txpow); % use a single max power value
+    [txs.peakCutOff] = deal(txpow);
+end
 
 % Terminate when done acquiring (not working ...)
 % vb.post(end+1) = VSXEvent('info', 'Stop', 'seqControl', [...
@@ -103,7 +105,7 @@ end
 
 %% convert to VSX structures
 global vs; % make global to access in within function
-vs = link(vb, vres, Trans, 'TXPD', false); % link
+vs = link(vb, vres, Trans, 'TXPD', true); % link
 pt1; vs.Media = Media; % add simulation media
 
 % DEBUG: test the manual receive delays
