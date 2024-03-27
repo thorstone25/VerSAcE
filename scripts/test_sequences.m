@@ -135,8 +135,44 @@ VSXOOD_SAVE_DIR = fullfile(pwd, 'tmp');
 if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
 
 % clear external functions
-clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
+clear RFDataImg RFDataProc RFDataStore;
 
-% VSX;
+return;
+%% Run
+VSX;
 
-%% 
+%% Post processing - parse and beamform data from the 2nd block
+
+% grab most recent dataset
+global VSXOOD_SAVE_DIR; %#ok<REDEFGG> % cleared by VSX
+fls = dir(fullfile(VSXOOD_SAVE_DIR, '*_*_*.mat')); % access mat-files in or folder
+dates = reshape(datetime([fls.datenum], 'ConvertFrom', 'datenum'), size(fls)); % file dates
+i = argmax(dates); % most recent file
+vs = load(fullfile(fls(i).folder, fls(i).name)); % data
+
+% extract block 2 (the data block)
+blk = 2; % vsxblock index
+evinf = string({vs.Event.info}); % event descriptions
+evi = contains(evinf, "Tx") & contains(evinf, "Blk "+blk) & ~contains(evinf, "Jump"); % filter
+[evir, evit] = deal(evi, evi & contains(evinf, "Frame 1") & contains(evinf, "Ap 1")); % corresponding receive and transmit events
+rxi = [vs.Event(evir).rcv]; assert(all(rxi > 0), "Detected a non-receive event!" ); % rx indices
+txi = [vs.Event(evit).tx ]; assert(all(txi > 0), "Detected a non-transmit event!"); % tx indices
+txs = vs.TX(txi); % TX
+rxs = vs.Receive(rxi); % Receive
+tw  = vs.TW(unique([txs.waveform])); % TW
+
+% convert to QUPS
+c0 = vs.Resource.Parameters.speedOfSound;
+[us, chd] = UltrasoundSystem.Verasonics(vs.Trans, txs, tw, ...
+    'c0', c0, 'Receive', rxs, 'RcvData', {vs.RData}, "PData", vs.PData ...
+    );
+
+% de-multiplexing
+Mx = 2; % 1 if none, 2 if Tx or Rx, 4 if both Tx and Rx
+x = 0; for i = 1:Mx, x = x + sub(chd.data,i:Mx:chd.M,chd.mdim); end % sum over physical transmits
+chd.data = x;
+
+% 
+
+
+
