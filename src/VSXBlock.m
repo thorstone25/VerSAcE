@@ -225,6 +225,18 @@ classdef VSXBlock < matlab.mixin.Copyable
                 end
             end
 
+            % For UI: allow an 'auto' option for 'button positions' arguments
+            pos = "User" + ["A","B","C"] + flip(1:8)';
+            prf = ["UserB"+(1:7), "UserC"+(6:8), "UserA"+(7:8), "UserC"+(4:8), "UserB8"];
+            pos = union(prf, pos, 'stable');
+            for i = 1:numel(UI)
+                upos = arrayfun(@(UI) string(UI.Control{1}), UI); % positions in use
+                fpos = setdiff(pos, upos, 'stable');
+                switch upos(i)
+                    case "auto", UI(i).Control{1} = char(fpos(1)); % first free position
+                end
+            end
+
             %% Parse special arguments
             % TW - Remove unused properties
             if all(cellfun(@isempty, {TW.VDASArbwave}))
