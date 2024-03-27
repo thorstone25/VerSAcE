@@ -9,9 +9,13 @@ if TOGGLE_RFDataStore
     % get save filename
     fileName = string(datetime('now'),'yyMMdd_HHmmss_SSSS') + ".mat";
     fnm = fullfile(save_dir, fileName); % filename
+
+    % get current settings
+    vs = update_vstruct();
+    vs.RData = RData;
     
     % save raw data
-    save(fnm, '-v7.3', '-nocompression', 'RData'); % TODO: maybe save as .dat file?
+    save(fnm, '-v7.3', '-nocompression', '-struct', 'vs'); % TODO: maybe save as .dat file?
     
     disp("RF data saved to " + fnm);
     TOGGLE_RFDataStore = false;
