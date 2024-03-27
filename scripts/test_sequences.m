@@ -1,4 +1,5 @@
- %#ok<*UNRCH> 
+ %#ok<*UNRCH> unreachable code due to const coded flags
+ %#ok<*GVMIS> using global variables
  
  %% Create different system configurations
 c0 = 1500; % sound speed
@@ -10,7 +11,7 @@ xdc = Transducer.Verasonics(Trans);
 uss = UltrasoundSystem('xdc', xdc); 
 uss.seq.c0 = c0;
 uss.scan.zb(2) = 150 * uss.lambda;
-uss.scan.xb = 1e-3 * [-40 40];
+uss.scan.xb = 1e-3 * [-20 20];
 [uss.scan.dx, uss.scan.dz] = deal(uss.lambda / 2);
 
 apd_center = false; % use only ceneter aperture
@@ -44,7 +45,7 @@ end
 
 %%
 % selection
-seq_ind = [3 2]; % sequence index
+seq_ind = [3 1]; % sequence index
 [us, apod] = deal(copy(uss(seq_ind)), apod0(seq_ind)); % choose pulse sequence template
 if false && apd_center
     N = min(128, us.xdc.numel); % active aperture size
@@ -59,15 +60,21 @@ vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 
 % make blocks
 for i = 1:numel(us)
-[vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres, "apod", apod{i} ...
-    ,"frames", 4 ...
-    ,'vTW', vTW, 'vTPC', vTPC ...
-    ,'recon_VSX', true ...
-    ,'saver_custom', false ...
-    ,'set_foci', true ...
-    ,'range', [0 us(i).scan.zb] ... in m
-    ,'range', [0 200]*1e-3 ... in m
-); % make VSX block
+    [vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres ...
+        ,"apod", apod{i} ...
+        ,"frames", 4 ...
+        ,'vTW', vTW, 'vTPC', vTPC ...
+        ,'recon_VSX', i == 1 ... imaging
+        ,'saver_custom', i == 2 ... data collection
+        ,'set_foci', true ...
+        ,'range', [0 us(i).scan.zb] ... in m
+        ,'range', [0 50]*1e-3 ... in m
+        ); %#ok<SAGROW> % make VSX block
+
+    % tag the block index
+    for j = 1:numel(vb(i).capture)
+        vb(i).capture(j).info = join([vb(i).capture(j).info,"Blk "+i], " - ");
+    end
 end
 
 % connect multiple blocks (set the 'next' prop to first 'capture')
