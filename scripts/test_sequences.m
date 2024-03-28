@@ -166,13 +166,26 @@ c0 = vs.Resource.Parameters.speedOfSound;
 [us, chd] = UltrasoundSystem.Verasonics(vs.Trans, txs, tw, ...
     'c0', c0, 'Receive', rxs, 'RcvData', {vs.RData}, "PData", vs.PData ...
     );
+scat = Scatterers.Verasonics(vs.Media,'scale',us.lambda,'c0',c0);
 
 % de-multiplexing
 Mx = 2; % 1 if none, 2 if Tx or Rx, 4 if both Tx and Rx
 x = 0; for i = 1:Mx, x = x + sub(chd.data,i:Mx:chd.M,chd.mdim); end % sum over physical transmits
 chd.data = x;
+chd = join(chd, chd.mdim); % HACK: make t0 scalar over tx if possible
 
-% 
+% beamform (sanity check)
+chd = hilbert(singleT(chd));
+D = chd.getPassbandFilter(us.xdc.bw);
+b = DAS(us, filter(chd,D));
+
+%% display
+figure("Name", "Post Processing Sanity Check"); tiledlayout('flow');
+nexttile(); imagesc(us.scan, b); dbr b-mode 60; 
+hold on; plot(us.xdc); plot(scat, 'r.');
+ttls = "Tx "+(1:chd.M)'+" : Frm "+(1:size(chd.data,4));
+nexttile(); h = imagesc(chd); animate(chd.data, h, title=ttls(:)');
+
 
 
 
