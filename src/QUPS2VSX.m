@@ -431,7 +431,7 @@ addr = cellfun(@int32, addr, "UniformOutput", false); % to int
 addr = cellfun(@(x)x-1,addr, "UniformOutput", false); % to 0-based
 
 %  sanity check
-assert(all([cnt{:}] < scan.nPix), "Detected index attempt higher than the number of pixels - this is a bug!");
+assert(all([cnt{:}] <= scan.nPix), "Detected index attempt higher than the number of pixels - this is a bug!");
 
 % create a default region for each transmit
 % TODO: VSXRegion
