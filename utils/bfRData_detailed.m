@@ -1,14 +1,15 @@
 %% Load FSA experimental data, visualize (channels, spectra), then beamform.
-outdir = '/home/benfrey/Vantage-4.8.4/tmp';
+% Run this .m file from with Vantage on your working directory.
+outdir = './tmp';
 
 % Load in mat files
 % (a) The MAT file containing RData
 % (b) The MAT file containing the QUPS configuration
 % (c) The MAT file containing the VSX post-acquisition configuration
 tic;
-RData = load('/home/benfrey/Vantage-4.8.4/tmp/240322_122422_9876.mat').RData;
-load('/home/benfrey/Vantage-4.8.4/MatFiles/qups-conf.mat', 'us', 'chd', 'QUPS_BF_PARAMS');
-vs = load('/home/benfrey/Vantage-4.8.4/tmp/qups-vsx-post.mat');
+RData = load('./tmp/240327_221748_5320.mat').RData; % Change this
+load('./MatFiles/qups-conf.mat', 'us', 'chd', 'QUPS_BF_PARAMS');
+vs = load('./tmp/qups-vsx-post.mat');
 
 % Take a look at the TGC information
 lambda = us.seq.c0/(vs.Trans.frequency*1e6); % [m]
@@ -20,8 +21,8 @@ xlim([0, xData(end)])
 ylim([0, 1050]);
 xticklabels(xticks*1e3)
 xlabel("Axial [mm]")
-ylabel("Gain [units?]")
-title("Applied TGC amplitude over (axial?) depth");
+ylabel("Amplitude")
+title("Applied TGC amplitude over time");
 grid on;
 saveas(gcf, sprintf('%s/tgc_curve.png', outdir))
 
@@ -41,8 +42,7 @@ tic;
 chd = hilbert(filter(chd, prms.D));
 
 % Take a look at the FFT of the filtered channel data
-mid=1
-tmp = abs(fft(chd.data(:, mid, mid)));
+tmp = abs(fft(chd.data(:, elem, elem)));
 hold on; plot(db(tmp/max(tmp(:)))); hold off; legend(["Chd", "Filtered Chd"], "Location", "southwest")
 saveas(gcf, sprintf('%s/fft_chd.png', outdir))
 
@@ -70,4 +70,4 @@ cb.Label.String = '[dB]';
 ylabel("Axial [mm]")
 xlabel("Lateral [mm]")
 axis image
-title('bfQUPS Example - CIRS-049A Type III Target (large circle)')
+title('bfQUPS Example')
