@@ -54,6 +54,11 @@ function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % properties are required for the 'computeTXPD' utility. The default is
 % false.
 %
+% [...] = QUPS2VSX(..., 'multi_rx', false) disables receive multiplexing.
+% If there are more elements than channels, an aperture must be selected
+% for each `VSXReceive`. The default is true when there are more elements
+% than channels.
+% 
 % Example:
 % % Create an UltrasoundSystem
 % xdc = TransducerArray.L11_5v();
