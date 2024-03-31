@@ -35,8 +35,8 @@ function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % [...] = QUPS2VSX(..., 'sample_mode', samp) uses the sampling mode given by 
 % the string samp. The default is "NS200BW".
 %
-% [...] = QUPS2VSX(..., 'custom_fs', fs) sets a custom sampling frequency fs. 
-% This overrides the sampling frequency chosen by Verasonics.
+% [...] = QUPS2VSX(..., 'custom_fs', fs) sets a custom sampling frequency
+% fs in Hz. This overrides the sampling frequency chosen by Verasonics.
 %
 % [...] = QUPS2VSX(..., 'recon_VSX', true) adds basic image reconstruction 
 % via Verasonics' Recon structures. The default is false.
@@ -180,8 +180,11 @@ switch kwargs.sample_mode
     case "BS100BW", fs_target = Trans.frequency * 2;
     case "BS67BW",  fs_target = Trans.frequency * 2 * 0.67;
     case "BS50BW",  fs_target = Trans.frequency * 1;
-    case "custom",  fs_target = kwargs.custom_fs;
+    case "custom",  fs_target = 1e-6*kwargs.custom_fs;
     otherwise, error("Sampling mode '" + kwargs.sample_mode + "' unsupported.");
+end
+if isfield(kwargs, "custom_fs")
+    fs_target = 1e-6*kwargs.custom_fs;
 end
 % fs_decim = fs_available(find(fs_available >= fs_target, 1, 'first')); % get first frequency above limit
 fs_decim = fs_available(argmin(abs(fs_available - fs_target))); % round to nearest supported frequency
@@ -260,7 +263,7 @@ kwargs.vTGC.Waveform = computeTGCWaveform(kwargs.vTGC, 1e6*Trans.frequency);
 %% Rcv
 % default
 vRcv = VSXReceive('startDepth', dnear, 'endDepth', dfar, 'bufnum', vbuf_rx, 'sampleMode', kwargs.sample_mode);
-if kwargs.sample_mode == "custom", vRcv.decimSampleRate = fs_decim; end
+if isfield(kwargs,'custom_fs'), vRcv.decimSampleRate = fs_decim; end
 vRcv.TGC = kwargs.vTGC;
 
 % replicate
