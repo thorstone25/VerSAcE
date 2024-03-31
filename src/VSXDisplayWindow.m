@@ -28,15 +28,17 @@ classdef VSXDisplayWindow < matlab.mixin.Copyable
         function vDisplayWindow = QUPS(scan,kwargs)
             arguments
                 scan (1,1) ScanCartesian
-		kwargs.?VSXDisplayWindow
+        		kwargs.?VSXDisplayWindow
             end
             args = namedargs2cell(kwargs);
+            dp = min(scan.dx, scan.dz); % set spacing to smallest difference
+            sz = 1+round(range([scan.xb; scan.zb],2) ./ dp)'; % set size based on image range
             vDisplayWindow = VSXDisplayWindow( ...
-                'ReferencePt', [scan.xb(1), scan.yb(1), scan.zb(1)], ...
-                'pdelta', scan.dx, ... 0.35
-                'Position', [1, 1, scan.nx, scan.nz], ...
+                'ReferencePt', [scan.xb(1), scan.yb(1), scan.zb(1)], ... upper left corner (2D, cartesian)
+                'pdelta', dp, ... 0.35
+                'Position', [1, 1, sz], ...
                 args{:} ...
-            ); 
+                );
         end
     end
 end
