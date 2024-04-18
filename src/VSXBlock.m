@@ -68,13 +68,13 @@ classdef VSXBlock < matlab.mixin.Copyable
                         blkid{i} = j; break;
                     end
                 end
-                % no matching other block - assume it belongs to self
-                blkid{i} = i;
+                % no matching 'other' block - this is independent!
+                blkid{i} = 0;
             end
 
             % get the sequence of events, in order
             vEvent = arrayfun(@(vb, i) {[vb.capture(:); vb.post(:); jump2event(vb.next, i{1})]'}, vblock, blkid); % order as capture, post, jump2next(next_event)
-            vEvent = [vEvent{:}]; 
+            vEvent = unique([vEvent{:}], 'stable');
 
             %% get arrays of all properties
             [vTx,  itx]     = unique([vEvent.tx]        , 'stable'); 
@@ -725,11 +725,13 @@ end
 end
 
 function vEvent = jump2event(vEvent, i)
-arguments, vEvent {mustBeScalarOrEmpty}, i (1,:) double = []; end
+arguments, vEvent {mustBeScalarOrEmpty}, i double {mustBeScalarOrEmpty} = []; end
 if isscalar(vEvent)
-vEvent = VSXEvent('info', "Jump to " + vEvent.info + (" of block " + i), 'seqControl', ...
-    VSXSeqControl('command', 'jump', 'argument', vEvent) ...
-    );
+    if i ~= 0 % 0 -> no matching block -> vEvent is the next Event!
+        vEvent = VSXEvent('info', "Jump to " + vEvent.info + (" of block " + i), 'seqControl', ...
+            VSXSeqControl('command', 'jump', 'argument', vEvent) ...
+            );
+    end
 end
 end
 
