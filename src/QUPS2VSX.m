@@ -300,12 +300,16 @@ no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2)
 %% Event loop
 % loop through all events and frames
 % ---------- Events ------------- %
-vEvent = copy(repmat(VSXEvent('seqControl', wait_for_tx_pulse), size(vRcv)));
+vEvent = repmat(VSXEvent(), size(vRcv));
 
 for f = 1:kwargs.frames
     for i = 1:seq.numPulse % each transmit
         for m = 1:Mx % each receive aperture
-            vEvent(m,i,f) = VSXEvent('info',"Tx "+i+" - Ap "+m+" - Frame "+f,'tx',vTX(i),'rcv',vRcv(m,i,f));
+            vEvent(m,i,f) = VSXEvent( ...
+                'tx',vTX(i), 'rcv',vRcv(m,i,f), ...
+                'seqControl', wait_for_tx_pulse,...
+                'info', "Tx "+i+" - Ap "+m+" - Frame "+f ...
+                );
         end
     end
 
