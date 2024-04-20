@@ -1,9 +1,10 @@
 classdef VSXTW < matlab.mixin.Copyable
     properties
+        % all
         type (1,1) string {mustBeMember(type, [ ...
             "parametric",...
             "envelope",...
-            "pulseCode",...
+            "pulseCode",... deprecated - will be spat back out
             "states",...
             "function",...
             "sampled"])} = "parametric";
@@ -21,6 +22,8 @@ classdef VSXTW < matlab.mixin.Copyable
         integralPkUsec (1,2) double
         fluxHVlimit double {mustBeScalarOrEmpty} 
         VDASArbwave uint16
+        
+        % added?
         perChWvfm (1,1) logical = false
         refchnum (1,1) double
         refRelPulseWidth (1,1) double
@@ -30,8 +33,21 @@ classdef VSXTW < matlab.mixin.Copyable
         chIpk1V (1,1) double
         wvfmIntegral (1,1) double
         simChNum double {mustBeInteger, mustBeScalarOrEmpty} = []
+        %TODO: use subclasses
+
+        % parametric
         Parameters (:,4) double = []
         equalize (1,1) {mustBeMember(equalize, [0 1 2])} = 1
+
+        % envelope
+        envNumCycles  (1,:) double {mustBeInteger, mustBeInRange(envNumCycles, 1, 10000)} = []
+        envFrequency  (1,:) double {mustBeInRange(envFrequency, 0.5e6, 32e6)} = []
+        envPulseWidth (1,:) double {mustBeInRange(envPulseWidth, -1, 1)} = []
+
+        % function/sampled
+        frequency (1,1) = NaN
+        Descriptors (1,4) = NaN
+        Waveform (1,:) = []        
     end
     methods
         function obj = VSXTW(kwargs)
@@ -42,7 +58,7 @@ classdef VSXTW < matlab.mixin.Copyable
         end
     end
 
-    % fill out the wvaeform property
+    % fill out the waveform property
     methods
         function [TW, Trans, TPC] = computeTWWaveform(TW, Trans, Resource, TPC)
             %
@@ -1569,15 +1585,6 @@ classdef VSXTW < matlab.mixin.Copyable
         end  % end of the computeTWWaveform function
     end
 
-    %{
-    methods
-        function type_ = get.type(vtw)
-            if      isa(vtw, 'VSXTWParametric'), type_ = "parametric"; 
-            else, error("Unrecognized type: please edit the code here.");
-            end
-        end
-    end
-    %}
 end
 
 %% Heuristic Nonlinearity Transformation (for simulation only)

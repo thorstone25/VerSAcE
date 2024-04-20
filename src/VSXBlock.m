@@ -241,6 +241,17 @@ classdef VSXBlock < matlab.mixin.Copyable
             % TW - Remove unused properties
             if all(cellfun(@isempty, {TW.VDASArbwave}))
                 TW = rmfield(TW, 'VDASArbwave');
+                for i = 1 : numel(TW)
+                    if TW(i).type ~= "envelope"
+                       [TW(i).envNumCycles, TW(i).envFrequency, TW(i).envPulseWidth]  = deal([]); % remove envelope properties
+                    elseif TW(i).type ~= "parametric"
+                        [TW(i).Parameters, TW(i).equalize] = deal([]); % remove parametric properties
+                    elseif TW(i).type ~= "sampled"
+                        TW(i).Waveform = [];
+                    elseif TW(i).type ~= "sampled" && TW(i).type ~= "function"
+                        [TW(i).frequency, TW(i).Descriptors] = deal([]); % remove function/sampled properties
+                    end
+                end
             end
 
             % SeqControl
