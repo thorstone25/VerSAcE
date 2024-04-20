@@ -41,7 +41,7 @@ classdef VSXTW < matlab.mixin.Copyable
 
         % envelope
         envNumCycles  (1,:) double {mustBeInteger, mustBeInRange(envNumCycles, 1, 10000)} = []
-        envFrequency  (1,:) double {mustBeInRange(envFrequency, 0.5e6, 32e6)} = []
+        envFrequency  (1,:) double {mustBeInRange(envFrequency, 0.5, 32)} = []
         envPulseWidth (1,:) double {mustBeInRange(envPulseWidth, -1, 1)} = []
 
         % function/sampled
