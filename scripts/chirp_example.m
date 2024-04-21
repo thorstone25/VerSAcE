@@ -8,8 +8,15 @@ us = UltrasoundSystem('xdc', xdc, 'seq', seq, 'scan', scn);
 
 %% Create necessary VSX objects (outside of QUPS)
 vRes = VSXResource(); % global resource definition
-vTW  = VSXTW('type','parametric', 'Parameters', [Trans.frequency, 0.67, 2, 1]); % tx waveform
 vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
+
+% Define a stepped LFM chirp
+df = 1.0; % step size in MHz
+cyc_per_frq = 2; % cycles per frequency
+frqs = 250./2./flip(6:197); % all supported tx frequencies
+frqs = repmat(frqs(xdc.bw(1)/1e6 < frqs & frqs < xdc.bw(end)/1e6), [cyc_per_frq, 1]); % within bandwidth
+frqs = frqs(:,arrayfun(@(f)argmin(abs(frqs(1,:) - f)), xdc.bw(1)/1e6 : df : xdc.bw(end)/1e6)); % 1MHz step size
+vTW = VSXTW('type','envelope', 'envFrequency', frqs(:), 'envPulseWidth', repmat(0.67, [1 numel(frqs)]), 'envNumCycles', numel(frqs)); % make waveform
 
 % Create a VSXBlock
 vb = QUPS2VSX(us, Trans, vRes, 'vTW', vTW, 'vTPC', vTPC, 'recon_VSX', true);
@@ -26,14 +33,23 @@ save(filename, '-struct', 'vs');
 VSX;
 
 %% Post-process
-if ~exist('RcvData', 'var'), RcvData = {RData}; end
+% import to QUPS
+if ~exist('RcvData', 'var'), RcvData = {RData}; end % alias
 c0   = Resource.Parameters.speedOfSound;
 [us, chd] = UltrasoundSystem.Verasonics(Trans, TX, TW, 'c0', c0, 'Receive', Receive, 'RcvData', RcvData, 'PData', PData); % import to QUPS                                [us, chd] = UltrasoundSystem.Verasonics(Trans, TX, TW, 'Receive', Receive, 'RcvData', RcvData); % import to QUPS
 sct = Scatterers.Verasonics(Media, 'c0', c0, 'scale', c0./us.xdc.fc);
-[v, ~, wv] = Waveform.Verasonics(TW, us.xdc.fc); % excitation, 2wy waveform
+[v, ~, wv] = Waveform.Verasonics(TW, us.xdc.fc); % voltage, 2wy waveform
 
 % plot the import
 chd = hilbert(singleT(chd));
 figure; plot(us); hold on; plot(sct, '.');
 figure; imagesc(chd); dbr echo 80; animate(chd.data, 'loop', false);
 
+% pulse compression
+wv = Waveform('t', wv.time, 'samples', wv.samples .* hamming(numel(wv.samples))); % apply windowing
+chdp = convt(chd, reverse(wv)); % matched filter
+chdp.t0 = chdp.t0 - 2*Trans.lensCorrection / us.xdc.fc; % residual phase adjustment?
+
+% image
+b = DAS(us, chdp, 'apod',  us.apAcceptanceAngle(45));
+figure; imagesc(us.scan, b); dbr b-mode 60; hold on; plot(sct, 'r.');
