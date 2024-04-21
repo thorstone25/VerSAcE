@@ -25,8 +25,8 @@ function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
 % single vResource whenever buffers are necessary or when combining 
 % multiple blocks.
 %
-% [...] = QUPS2VSX(..., 'frames', F) creates F frames per block. The default 
-% is 1.
+% [...] = QUPS2VSX(..., 'frames', F) creates F frames per block. This must
+% be 1 or an even number. The default is 1.
 %
 % [...] = QUPS2VSX(..., 'units', 'wavelengths') or 
 % [...] = QUPS2VSX(..., 'units', 'mm') sets the units to wavelengths or
@@ -50,33 +50,38 @@ function [vBlock, chd, Trans] = QUPS2VSX(us, xdc, vResource, kwargs)
 %
 % [...] = QUPS2VSX(..., 'set_foci', true) sets the Verasonics 'Origin',
 % 'Steer', and 'focus' properties for each 'TX' struct. This appears to
-% *override* the delays from QUPS, making them innacurate! However, these
-% properties are required for the 'computeTXPD' utility. The default is
-% false.
+% potentially *override* the delays from QUPS, making them innacurate! 
+% However, these properties are required for the 'computeTXPD' utility. The
+% default is true.
 %
 % [...] = QUPS2VSX(..., 'multi_rx', false) disables receive multiplexing.
 % If there are more elements than channels, an aperture must be selected
-% for each `VSXReceive`. The default is true when there are more elements
-% than channels.
+% for each `VSXReceive`. For example, to use aperture 33 for all events:
+% ```
+% vb = QUPS2VSX(...); % create a block
+% rxs = [vb.capture.rcv]; % extract all VSXReceives
+% [rxs.aperture] = deal(33); % set the aperture on Receive
+% vs = vb.link(); % link
+% ```
+% The default is true when there are more elements than channels.
 % 
 % Example:
 % % Create an UltrasoundSystem
-% xdc = TransducerArray.L11_5v();
+% [xdc, Trans] = TransducerVerasonics('P4-2v');
 % seq = Sequence('type', 'FSA', 'numPulse', xdc.numel);
-% scan = ScanCartesian('x', -20e-3 : 0.1e-3 : 20e-3, 'z', 0 : 0.1e-3 : 40e-3);
+% scan = ScanCartesian('x', -30e-3 : 0.1e-3 : 30e-3, 'z', 0 : 0.1e-3 : 100e-3);
 % us = UltrasoundSystem('scan', scan, 'seq', seq, 'xdc', xdc);
 %
 % % Create the VSXBlock
 % vRes = VSXResource();
-% [vBlock, chd, Trans] = QUPS2VSX(us, "L11-5v", vRes, 'recon_VSX', true);
+% [vBlock, chd] = QUPS2VSX(us, Trans, vRes, 'recon_VSX', true);
 %
 % % Link to create the struct
-% s = vBlock.link(vRes);
-% s.Trans = Trans; % include the Trans struct
+% vs = vBlock.link(vRes, Trans);
 %
 % % Save to a MAT-file
 % filename = fullfile('MatFiles','qups-vsx.mat');
-% save(filename, '-struct', 's'); % save the fields of 's'
+% save(filename, '-struct', 'vs'); % save the fields of 'vs'
 %
 % % Launch VSX
 % VSX;
@@ -104,7 +109,7 @@ arguments
     kwargs.saver_custom (1,1) logical = false
     kwargs.multi_rx (1,1) logical = (isa(xdc, 'struct') && (xdc.numelements > vResource.Parameters.numRcvChannels)) ...
         || (isa(xdc, 'Transducer') && (xdc.numel > vResource.Parameters.numRcvChannels))
-    kwargs.set_foci (1,1) logical = false
+    kwargs.set_foci (1,1) logical = true
 end
 
 % squash obj to struct warning
