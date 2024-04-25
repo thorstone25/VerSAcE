@@ -296,7 +296,7 @@ end
 
 %% SeqControl
 t_puls = round(T / fs_decim) + 50; % pulse wait time in usec
-t_frm = t_puls*Mx*seq.numPulse*1.2; % frame wait time in usec
+t_frm = double(round(t_puls*Mx*seq.numPulse*1.2)); % frame wait time in usec
 wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
 wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_frm ); % max TTNA is 4190000
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
