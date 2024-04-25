@@ -62,14 +62,14 @@ classdef VSXBlock < matlab.mixin.Copyable
         end
             
             % identify which block each "next" value belongs to if any
+                % no matching 'other' block - this is independent!
+            blkid = num2cell(zeros(1,numel(vblock)));
             for i = numel(vblock):-1:1
                 for j = numel(vblock):-1:1
                     if ismember(vblock(i).next, vblock(j).capture)
                         blkid{i} = j; break;
                     end
                 end
-                % no matching 'other' block - this is independent!
-                blkid{i} = 0;
             end
 
             % get the sequence of events, in order
