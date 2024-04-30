@@ -321,18 +321,18 @@ for f = 1:kwargs.frames
     % transfer data to host using the last event of the frame
     vEvent(m,i,f).seqControl = [wait_for_pulse_sequence, copy(transfer_to_host)]; % modify last acquisition vEvent's seqControl
 end
-vEvent = reshape(vEvent, [prod(size(vEvent,1:2)), size(vEvent,3)]); % combine rx multiplexing
     
 %% Add Events per frame 
 % make recon image and return to MATLAB
 if kwargs.recon_VSX
-    return_to_matlab = VSXSeqControl('command', 'returnToMatlab');
-    [recon_event] = addVSXRecon(scan, vResource, vTX, vRcv, return_to_matlab, 'multipage', false, 'numFrames', kwargs.frames, 'apod', kwargs.apod);
+    [recon_event, vPData] = addReconVSX(scan, vTX, vRcv, vResource, 'multipage', false, 'numFrames', kwargs.frames, 'apod', kwargs.apod);
     recon_event.recon.newFrameTimeout = 50 * 1e-3*wait_for_pulse_sequence.argument; % wait time in msec ~ heuristic is approx 50 x acquisition time
-    vEvent(end+1,:) = recon_event; % assign to end of TX-loop
-    vEvent(end,:) = copy(vEvent(end,:)); % copy to make unique Events for each frame
+
+    vEvent = reshape(vEvent, [1 Mx*seq.numPulse kwargs.frames]); % combine rx multiplexing
+    vEvent(:,end+1,:) = recon_event; % assign to end of TX-loop
+    vEvent(:,end,:) = copy(vEvent(:,end,:)); % copy to make unique Events for each frame
 else
-    recon_event = VSXEvent.empty;
+    vPData = VSXPData.empty;
 end
 
 %% Add Events at the end of the loop
@@ -341,20 +341,17 @@ vev_post = reshape(VSXEvent.empty, [1,0]);
 
 % custom delays reconstruction process and ui
 if kwargs.recon_custom_delays
-    [vUI(end+1), vev_post(end+1)] = addCustomDelayRecon(vbuf_rx, no_operation);
+    [vev_post(end+1), vUI(end+1)] = addProcCustom(vbuf_rx, no_operation);
 end
 
 % custom beamformer reconstruction process and ui
 if kwargs.recon_custom
-    if isempty(recon_event), vPData = VSXPData.empty; 
-    else, vPData = recon_event.recon.pdatanum; % reuse PData
-    end
-    [vUI(end+1), vev_post(end+(1:2))] = addCustomRecon(scan, vResource, vbuf_rx, vPData, no_operation);
+    [vev_post(end+(1:2)), vUI(end+1)] = addReconCustom(scan, vbuf_rx, vResource, no_operation, vPData);
 end
 
 % custom saving process and ui
 if kwargs.saver_custom
-    [vUI(end+1), vev_post(end+1)] = addCustomSaver(vbuf_rx, no_operation);
+    [vev_post(end+1), vUI(end+1)] = addSaveRF(vbuf_rx, no_operation);
 end
 
 % ---------- Events ------------- %
@@ -377,246 +374,7 @@ warning(warning_state);
 % done!
 return; 
 
-function [vEvent, vPData] = addVSXRecon(scan, vResource, vTX, vRcv, vSeq, kwargs)
-arguments
-    scan Scan
-    vResource VSXResource
-    vTX VSXTX
-    vRcv VSXReceive
-    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
-    kwargs.numFrames (1,1) double = 1
-    kwargs.multipage (1,1) logical = false
-    kwargs.display (1,1) logical = true
-    kwargs.apod (:,:,:,:,:) {mustBeNumericOrLogical} = 1
-end
-
-%% Validate sizing
-Tx = prod(size(vRcv,2));
-assert(all(any(size(kwargs.apod,1:5) == [[scan.size,Tx,kwargs.numFrames]; ones(1,5)],1)), ...
-    "The size of the apodization(" +...
-    join(string(size(kwargs.apod,1:5)),", ") +...
-    ") must be compatible with the scan (" + ...
-    join(string(scan.size),", ") +...
-    ") and the number of transmits (" + Tx + ")." ...
-);
-
-%% ReconInfo
-% We need 1 ReconInfo structures for each transmit
-vReconInfo = copy(repmat(VSXReconInfo('mode', 'accumIQ'), size(vRcv,1:2)));  % default is to accumulate IQ data.
-
-% - Set specific ReconInfo attributes.
-for k = 1%:size(vReconInfo,3)
-for i = 1:size(vReconInfo,1) % for each rx of the reconinfo object (multiplexing)
-for j = 1:size(vReconInfo,2) % for each tx of the reconinfo object
-    [vReconInfo(i,j,k).txnum    ] = deal(vTX(   j)); % tx
-    [vReconInfo(i,j,k).rcvnum   ] = deal(vRcv(i,j)); % rx
-    [vReconInfo(i,j,k).regionnum] = deal(       j );% region index TODO: VSXRegion
-    if kwargs.multipage
-        [vReconInfo(i,j,k).pagenum] = deal(sub2ind(size(vReconInfo),i,j,k)); % page number
-    end
-end
-end
-end
-
-vReconInfo( 1 ).Pre  = "clearInterBuf"; % clear accumulator on init
-vReconInfo(end).Post = "IQ2IntensityImageBuf"; % copy result 
-
-% vReconInfo( 1 ).mode = 'replaceIQ'; % on first tx, replace IQ data
-% vReconInfo(end).mode = 'accumIQ_replaceIntensity'; % on last tx, accum and "detect"
-
-% threadsync conflict? Overlapping regions are processed in parallel, so
-% this introduces a race conditions if they overlap
-ts = (any( (sum(kwargs.apod,4:5) > 1) .* kwargs.apod , 1:3)); % Tx x F
-[vReconInfo.threadSync] = deal(any(ts,'all')); %%% TODO: can we sort into independent groups, shuffle to trick the FPGA, and compute this ind. per region?
-
-% if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx
-
-%% PData
-% create the pixel data
-vPData = VSXPData.QUPS(scan);
-
-% get the apodization in it's full size
-ap = logical(kwargs.apod); % mask
-Psz = [scan.size Tx, 1+0*size(vRcv,3)]; % full sizs (I x Tx x [1*|F])
-ap = repmat(ap, Psz ./ size(ap,1:5)); % explicit brodcast
-
-% convert to address / count format
-aps = num2cell(ap, 1:3); % pack pixels per cell
-cnt  = cellfun(@nnz,   aps,  "UniformOutput", false); % number of pixels
-addr = cellfun(@find,  aps,  "UniformOutput", false); % linear address (1-based)
-addr = cellfun(@int32, addr, "UniformOutput", false); % to int
-addr = cellfun(@(x)x-1,addr, "UniformOutput", false); % to 0-based
-
-%  sanity check
-assert(all([cnt{:}] <= scan.nPix), "Detected index attempt higher than the number of pixels - this is a bug!");
-
-% create a default region for each transmit
-% TODO: VSXRegion
-% vPData.Region = repmat(struct('Shape', struct('Name','Custom'), 'PixelsLA', int32(0:scan.nPix-1), 'numPixels', scan.nPix), [1 numel(vReconInfo)]);
-vPData.Region = cellfun(@(LA, NP) struct('Shape', struct('Name','Custom'), 'PixelsLA', LA, 'numPixels', NP), addr(1:Tx), cnt(1:Tx));
-
-% fill out the regions
-% TODO: VSXRegion
-% vPData.Region = computeRegions(struct(vPData));
-
-%% Make Buffers
-% if inter(mediate) buffers needed, create one
-if true || any(contains([vReconInfo.mode], "IQ"))
-    % get required number of pages
-    if any(contains([vReconInfo.mode], "pages"))
-        P = vResource.Parameters.numRcvChannels; % for page acquisitions, each page is a receive channel
-    else 
-        P = max([1, vReconInfo.pagenum]); % use max page number in reconinfo
-    end
-    
-    % make a buffer
-    vbuf_inter = VSXInterBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames, 'pagesPerFrame', P); 
-else
-    vbuf_inter = VSXInterBuffer.empty; % no buffer
-end
-
-% if image buffers needed, create one
-if any(contains([[vReconInfo.mode], [vReconInfo.Post]], "Intensity"))
-    vbuf_im = VSXImageBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames);
-else
-    vbuf_im = VSXImageBuffer.empty; % no buffer
-end
-
-%% Recon
-vRecon = VSXRecon('pdatanum', vPData, 'IntBufDest', vbuf_inter, 'ImgBufDest', vbuf_im, "RINums", vReconInfo(:));
-
-%% Display window
-if kwargs.display
-    vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
-        'Title', 'VSX Beamformer', ...
-        'numFrames', kwargs.numFrames, ...
-        'AxesUnits', 'mm', ...
-        'Colormap', gray(256) ...
-        );
-
-    %% Process
-    display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
-    display_image_process.Parameters = {
-        'imgbufnum', vbuf_im,...   % number of buffer to process.
-        'framenum',-1,...   % (-1 => lastFrame)
-        'pdatanum', vPData,...    % PData structure to use
-        'pgain',1.0,...            % pgain is image processing gain
-        'reject',2,...      % reject level
-        'persistMethod','simple',...
-        'persistLevel',20,...
-        'interpMethod','4pt',...
-        'grainRemoval','none',...
-        'processMethod','none',...
-        'averageMethod','none',...
-        'compressMethod','power',...
-        'compressFactor',40,...
-        'mappingMethod','full',...
-        'display',1,...      % display image after processing
-        'displayWindow', vDisplayWindow, ...
-        };
-
-    %% Event
-    vEvent = VSXEvent(...
-        'info', 'VSX Recon', ...
-        'recon', vRecon, ...
-        'process', display_image_process, ...
-        'seqControl', vSeq ...
-        );
-else
-    vEvent = VSXEvent.empty;
-end
-
-%% Add to required Resource buffer
-if ~isempty(vbuf_inter    ), vResource.InterBuffer(end+1)    = vbuf_inter    ; end
-if ~isempty(vbuf_im       ), vResource.ImageBuffer(end+1)    = vbuf_im       ; end
-if ~isempty(vDisplayWindow), vResource.DisplayWindow(end+1)  = vDisplayWindow; end
-
-function [vUI, vEvent] = addCustomRecon(scan, vResource, vbuf_rx, vPData, vSeq, kwargs)
-arguments
-    scan Scan
-    vResource VSXResource
-    vbuf_rx (1,1) VSXRcvBuffer
-    vPData {mustBeScalarOrEmpty} = VSXPData.empty
-    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
-    kwargs.numFrames (1,1) double = 1
-    kwargs.multipage (1,1) logical = false
-    kwargs.display (1,1) logical = true
-end
-
-nm = "RFDataImg"; % function name
-
-% PData
-if isempty(vPData), vPData = VSXPData.QUPS(scan); end
-
-% Image buffer
-vbuf_inter = VSXInterBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames); 
-vbuf_im    = VSXImageBuffer.fromPData(vPData);
-
-% Display window
-vDisplayWindow = VSXDisplayWindow.QUPS(scan, ...
-    'Title', 'QUPS Recon', ...
-    'numFrames', kwargs.numFrames, ...
-    'AxesUnits', 'mm', ...
-    'Colormap', gray(256) ...
-    );
-
-% Process
-compute_image_process = VSXProcess('classname', 'External', 'method', nm);
-compute_image_process.Parameters = {
-    'srcbuffer','receive',...
-    'srcbufnum', vbuf_rx,...
-    'srcframenum',0,... 0 for all frames
-    'dstbuffer','image', ...
-    'dstbufnum', vbuf_im, ...
-    'dstframenum', -1,... -1 for last frame
-    };
-
-display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
-display_image_process.Parameters = { ...
-    'imgbufnum', vbuf_im,...   % number of buffer to process.
-    'framenum',-1,...   % (-1 => lastFrame)
-    'pdatanum', vPData,...    % PData structure to use
-    'pgain',1.0,...            % pgain is image processing gain
-    'reject',2,...      % reject level
-    'persistMethod','simple',...
-    'persistLevel',20,...
-    'interpMethod','4pt',...
-    'grainRemoval','none',...
-    'processMethod','none',...
-    'averageMethod','none',...
-    'compressMethod','power',...
-    'compressFactor',40,...
-    'mappingMethod','full',...
-    'display',1,...      % display image after processing
-    'displayWindow', vDisplayWindow ...
-    };
-
-% Event
-vEvent = VSXEvent(...
-    'info', 'QUPS Recon', ...
-    'process', compute_image_process, ...
-    'seqControl', vSeq ...
-    );
-
-vEvent(2) = VSXEvent(...
-    'info', 'QUPS Disp', ...
-    'process', display_image_process, ...
-    'seqControl', vSeq ...
-    );
-
-% UI
-vUI = VSXUI( ...
-    'Control', {'auto','Style','VsToggleButton','Label', 'Image RFData', 'Callback', str2func("do"+nm)}, ...
-    'Statement', cellstr(["global TOGGLE_"+nm+"; TOGGLE_"+nm+" = false; return;"]), ... init
-    'Callback', cellstr(["do"+nm+"(varargin)", "global TOGGLE_"+nm+"RFDataImg; TOGGLE_"+nm+" = logical(UIState); return;"]) ...
-    );
-
-%% Add to required Resource buffer
-if ~isempty(vbuf_im       ), vResource.ImageBuffer(end+1)    = vbuf_im       ; end
-if ~isempty(vbuf_inter    ), vResource.InterBuffer(end+1)    = vbuf_inter    ; end
-if ~isempty(vDisplayWindow), vResource.DisplayWindow(end+1)  = vDisplayWindow; end
-
-function [vUI, vEvent] = addCustomDelayRecon(vbuf_rx, vSeq)
+function [vEvent, vUI] = addProcCustom(vbuf_rx, vSeq)
 arguments
     vbuf_rx (1,1) VSXRcvBuffer
     vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
@@ -624,8 +382,7 @@ end
 
 nm = "RFDataProc";
 %% Add custom data processing
-proc_rf_data = VSXProcess('classname', 'External', 'method', nm, 'Parameters',{...);
-% proc_rf_data.Parameters = {                                                     
+proc_rf_data = VSXProcess('classname', 'External', 'method', nm, 'Parameters',{...
     'srcbuffer','receive',...                                                   
     'srcbufnum', vbuf_rx,...                                                    
     'srcframenum',0,...                                                         
@@ -640,25 +397,4 @@ vUI = VSXUI( ...
 % process RF Data
 vEvent = VSXEvent('info', 'Proc RF Data', 'process', proc_rf_data, 'seqControl', vSeq);                               
 
-function [vUI, vEvent] = addCustomSaver(vbuf_rx, vSeq)
-arguments
-    vbuf_rx (1,1) VSXRcvBuffer
-    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
-end
-nm = "RFDataStore";
-%% Process: saving data
-save_rf_data = VSXProcess('classname', 'External', 'method', nm, 'Parameters',{ ...);
-... save_rf_data.Parameters = {
-    'srcbuffer','receive',...
-    'srcbufnum', vbuf_rx,... 
-    'srcframenum',0,...
-    'dstbuffer','none'});
-
-vUI = VSXUI( ...
-'Control', {'auto','Style','VsPushButton','Label', 'SAVE RFData', 'Callback', str2func("do"+nm)}, ...
-'Callback', cellstr(["do"+nm+"(varargin)", "global TOGGLE_"+nm+"; TOGGLE_"+nm+" = true; return;"]) ...
-);
-
-% save all RF Data
-vEvent = VSXEvent('info', 'Save RF Data', 'process', save_rf_data, 'seqControl', vSeq);
 
