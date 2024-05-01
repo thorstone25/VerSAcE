@@ -1,9 +1,9 @@
 function RFDataStore(RData, varargin)
 global TOGGLE_RFDataStore;
-global VSXOOD_SAVE_DIR;
+global VERSACE_PARAMS;
 
 if TOGGLE_RFDataStore
-    save_dir = VSXOOD_SAVE_DIR;
+    save_dir = VERSACE_PARAMS.save_dir;
     if ~exist(save_dir, 'dir'), mkdir(save_dir); end % make a directory if non exists
     
     % get save filename
