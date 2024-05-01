@@ -11,8 +11,7 @@ c0 = 1500;
 % c0 = 1550; 
 % c0 = 1475; 
 
-Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
-xdc = Transducer.Verasonics(Trans); % VSX -> QUPS
+[xdc, Trans] = TransducerVerasonics(char(xdc_name), "mm"); % % transducer VSX / QUPS
 lbda = c0*1e-3 / Trans.frequency;
 
 % imaging region (200 wavelengths)
@@ -85,9 +84,9 @@ iopts.pgain = 4; % sqrt(seq0.numPulse);
 ev(2).process.Parameters = namedargs2cell(iopts); % set modified valus
 %}
 
-% add sound speed estimation
-[ui, ev] = addDataFun("ceQUPS", rxbuf, 'UItyp', 'VsToggleButton', 'UIpos', "UserB5");
-[vb.vUI(end+(1:numel(ui))), vb.post(end+(1:numel(ev)))] = deal(ui, ev);
+% % add sound speed estimation
+% [ui, ev] = addDataFun("ceQUPS", rxbuf, 'UItyp', 'VsToggleButton', 'UIpos', "UserB5");
+% [vb.vUI(end+(1:numel(ui))), vb.post(end+(1:numel(ev)))] = deal(ui, ev);
 
 
 % remove recon for pilot pulses

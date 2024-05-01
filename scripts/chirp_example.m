@@ -26,7 +26,7 @@ vs = link(vb, vRes, Trans, 'TXPD', true); % link
 pt1; vs.Media = Media; % add simulation media
 
 % Save
-filename = 'MatFiles/qups-vsx.mat';
+filename = fullfile(vantageroot, 'MatFiles/qups-vsx.mat');
 save(filename, '-struct', 'vs');
 
 %% Run
