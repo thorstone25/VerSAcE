@@ -218,6 +218,7 @@ delay = - seq.delays(xdc) * xdc.fc;
 apod  = seq.apodization(xdc);
 % delay(~apod) = nan; % deactivate non-active elements, TODO: debug this
 t0    = min(delay, [], 1, 'omitnan'); % min over elements
+if all(t0(1) == t0, 2), t0 = t0(1); end % scalarize if possible
 delay = delay - t0; % don't include 0
 if max(delay,[],'all','omitnan') / xdc.fc > 45.5e-6
     error("QUPS2VSX:unsupportedSequence", ...
@@ -361,7 +362,6 @@ vBlock = VSXBlock('capture', vEvent, 'post', vev_post, 'next', vEvent(1), 'vUI',
 if ~isempty(kwargs.vTPC), vBlock.vTPC = kwargs.vTPC; end
 
 %% Create a template ChannelData object
-% TODO: call computeTWWaveform to get TW.peak correction
 t0l = - 2 * Trans.lensCorrection; % lens correction in wavelengths
 t0p = - vTW.peak; % peak correction in wavelengths
 x = zeros([T Mx*seq.numPulse Trans.numelements kwargs.frames, 0], 'single'); % pre-allocated array
