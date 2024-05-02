@@ -13,6 +13,7 @@ if TOGGLE_RFDataStore
     % get current settings
     vs = update_vstruct();
     vs.RData = RData;
+    vs.VERSACE_PARAMS = VERSACE_PARAMS;
     
     % save raw data
     save(fnm, '-v7.3', '-nocompression', '-struct', 'vs'); % TODO: maybe save as .dat file?
