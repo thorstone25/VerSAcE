@@ -1,7 +1,7 @@
-function [vEvent, vUI] = addSaveRF(vbuf_rx, vSeq)
+function [vUI, vEvent] = addSaveRF(vbuf_rx, vSeq)
 arguments
     vbuf_rx (1,1) VSXRcvBuffer
-    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
+    vSeq (1,:) VSXSeqControl = VSXSeqControl('command', 'noop', 'argument', 100/0.2); 
 end
 nm = "RFDataStore";
 %% Process: saving data
