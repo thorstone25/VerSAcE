@@ -32,7 +32,3 @@ codegen/
 # Cloud based storage dotfile
 .MATLABDriveTag
 
-# List of untracked files to ignore
-resources/
-*.prj
-
