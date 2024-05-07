@@ -34,9 +34,14 @@ VSX;
 ```
 
 ## Structure
-VerSAcE is designed to simplify acquisition scripts by replacing indexing references with handle classes that can be 'linked' by index in a final processing stage. Each handle class a simple wrapper around the corresponding native struct e.g. `VSXTW` is a wrapper for the `TW` struct, and `VSXTX` is a wrapper for the `TX` struct, and so on. Each wrapper additionally performs argument validation to prevent typos, and in some cases maps enumerated options by name to their corresponding numeric value. Typically, you can use the 'tab' key when only a predefined list of options is acceptable. 
+VerSAcE is designed to simplify acquisition scripts by replacing indexing references with handle classes that can be 'linked' by index in a final processing stage. Each handle class a simple wrapper around the corresponding native struct e.g. `VSXTW` is a wrapper for the `TW` struct, and `VSXTX` is a wrapper for the `TX` struct, and so on. Each wrapper additionally performs argument validation to prevent typos, and in some cases maps enumerated options by name to their corresponding numeric value. Typically, you can use the 'tab' key when only a predefined list of options is acceptable.
 
 Numeric references to other classes are replaced by instances of the other class. For example, `tx` and `rcv` properties of the `VSXEvent` class must be a `VSXTX` and a `VSXReceive` respectively, and the `waveform` property of the `VSXTX` class must be a `VSXTW`. Linking is handled by the `link` method of the [`VSXBlock`](#the-vsxblock) class.
+
+**Tree Structure of Dependencies**
+
+![Tree Structure of Dependencies](img/diag1.png)
+*Diagram illustrating the tree structure of dependencies of objects.*
 
 ### The VSXBlock
 The `VSXBlock` class provides an abstraction of an acquisition sequence, and performs the linking method. The block separates events into 3 consecutive sets:
@@ -51,6 +56,11 @@ In addition to numeric indexing, the `link` method performs other final pre-proc
 * if #elements > #channels, a `TX.aperture` is selected from the available apertures within the `Trans` struct that satisfies `TX.Apod`
 * UI controls with a position of 'auto' are assigned a user position
 * (optional) transmit power density (TXPD) is computed
+
+**Block and Event Object Hierarchy**
+
+![Event Object Hierarchy](img/diag2.png)
+*Diagram showing how a Block can contain multiple Events and an Event contains a TX, TX contains waveform, etc.*
 
 ### Modifying the VSXBlock
 With this structure, one can therefore use traditional indexing to modify and replace objects. Use the `copy` method to represent a different instance. For example, you can implement tissue harmonic imaging by duplicating transmit events, inverting a parametric waveform, and accumulating the negative pulse receive data within the same acquisition:
