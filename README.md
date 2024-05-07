@@ -40,8 +40,10 @@ Numeric references to other classes are replaced by instances of the other class
 
 **Tree Structure of Dependencies**
 
-![Tree Structure of Dependencies](img/diag1.png)
+<img src="img/diag1.png" alt="Tree Structure of Dependencies" width="400">
+
 *Diagram illustrating the tree structure of dependencies of objects.*
+
 
 ### The VSXBlock
 The `VSXBlock` class provides an abstraction of an acquisition sequence, and performs the linking method. The block separates events into 3 consecutive sets:
@@ -59,8 +61,10 @@ In addition to numeric indexing, the `link` method performs other final pre-proc
 
 **Block and Event Object Hierarchy**
 
-![Event Object Hierarchy](img/diag2.png)
+<img src="img/diag2.png" alt="Event Object Hierarchy" width="400">
+
 *Diagram showing how a Block can contain multiple Events and an Event contains a TX, TX contains waveform, etc.*
+
 
 ### Modifying the VSXBlock
 With this structure, one can therefore use traditional indexing to modify and replace objects. Use the `copy` method to represent a different instance. For example, you can implement tissue harmonic imaging by duplicating transmit events, inverting a parametric waveform, and accumulating the negative pulse receive data within the same acquisition:
