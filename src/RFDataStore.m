@@ -12,13 +12,13 @@ if TOGGLE_RFDataStore
 
     % get current settings
     vs = update_vstruct();
-    vs.RData = RData;
-    vs.VERSACE_PARAMS = VERSACE_PARAMS;
+    if isfield(vs, 'UI'), vs = rmfield(vs, 'UI'); end % exclude UI
+    [vs.RData, vs.VERSACE_PARAMS] = deal(RData, VERSACE_PARAMS); % append
     
     % save raw data
     save(fnm, '-v7.3', '-nocompression', '-struct', 'vs'); % TODO: maybe save as .dat file?
     
-    disp("RF data saved to " + fnm);
+    if VERSACE_PARAMS.verbose, disp("RF data saved to " + fnm); end
     TOGGLE_RFDataStore = false;
 end
 end
