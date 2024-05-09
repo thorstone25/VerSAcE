@@ -78,7 +78,7 @@ switch kwargs.UItyp
             );
     case "None", vUI = VSXUI.empty;
     otherwise
-        error("VSXOOD:addReconFun:buttonTypeNotSupported", "Button not supported.");
+        error("VerSAcE:addReconFun:buttonTypeNotSupported", "Button not supported.");
 end
 
 %% Add to required Resource buffer
