@@ -104,8 +104,6 @@ arguments
     kwargs.custom_fs (1,1) double {mustBeInRange(kwargs.custom_fs, 2.5e6, 62.5e6)}
     kwargs.range (1,2) {mustBeReal, mustBeNonnegative} = [us.scan.zb(1), hypot(max(abs(us.scan.xb)), max(abs(us.scan.zb)))]
     kwargs.recon_VSX (1,1) logical = false
-    kwargs.recon_custom (1,1) logical = false
-    kwargs.recon_custom_delays (1,1) logical = false
     kwargs.saver_custom (1,1) logical = false
     kwargs.multi_rx (1,1) logical = (isa(xdc, 'struct') && (xdc.numelements > vResource.Parameters.numRcvChannels)) ...
         || (isa(xdc, 'Transducer') && (xdc.numel > vResource.Parameters.numRcvChannels))
@@ -340,19 +338,9 @@ end
 % vectorize
 vev_post = reshape(VSXEvent.empty, [1,0]);
 
-% custom delays reconstruction process and ui
-if kwargs.recon_custom_delays
-    [vev_post(end+1), vUI(end+1)] = addProcCustom(vbuf_rx, no_operation);
-end
-
-% custom beamformer reconstruction process and ui
-if kwargs.recon_custom
-    [vev_post(end+(1:2)), vUI(end+1)] = addReconCustom(scan, vbuf_rx, vResource, no_operation, vPData);
-end
-
 % custom saving process and ui
 if kwargs.saver_custom
-    [vev_post(end+1), vUI(end+1)] = addSaveRF(vbuf_rx, no_operation);
+    [vUI(end+1), vev_post(end+1)] = addSaveRF(vbuf_rx, no_operation);
 end
 
 % ---------- Events ------------- %
@@ -370,31 +358,5 @@ chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc,
 %% added External Functions/Callback
 % restore warning state
 warning(warning_state);
-
-% done!
-return; 
-
-function [vEvent, vUI] = addProcCustom(vbuf_rx, vSeq)
-arguments
-    vbuf_rx (1,1) VSXRcvBuffer
-    vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
-end
-
-nm = "RFDataProc";
-%% Add custom data processing
-proc_rf_data = VSXProcess('classname', 'External', 'method', nm, 'Parameters',{...
-    'srcbuffer','receive',...                                                   
-    'srcbufnum', vbuf_rx,...                                                    
-    'srcframenum',0,...                                                         
-    'dstbuffer','none'});
-
-vUI = VSXUI( ...
-'Control', {'auto','Style','VsToggleButton','Label', 'Process RFData', 'Callback', str2func("do"+nm)}, ...
-'Statement', cellstr(["global TOGGLE_"+nm+"; TOGGLE_"+nm+" = false; return;"]), ... init
-'Callback', cellstr(["do"+nm+"(varargin)", "global TOGGLE_"+nm+"; TOGGLE_"+nm+" = logical(UIState); return;"]) ...
-);
-
-% process RF Data
-vEvent = VSXEvent('info', 'Proc RF Data', 'process', proc_rf_data, 'seqControl', vSeq);                               
 
 
