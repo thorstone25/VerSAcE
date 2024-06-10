@@ -233,12 +233,12 @@ for i = 1:seq.numPulse
         switch seq.type
             case {"FC","DV","VS"} % focused / diverging / virtual source (assumed focused)
                 % TODO: set for arb. Transducer types
-                if ~any(arrayfun(@(t) isa(xdc,t), ["TransducerArray", "TransducerMatrix"]))
-                    warning("Focal sequence 'Origin' property assumes a planar transducers.");
+                vTX(i).FocalPt = seq.focus(:,i) ./ lambda; %  when set, {focus,Steer,Origin} are ignored
+                if isa(xdc, "TransducerConvex"), % depth is to the radial origin
+                    vTX(i).focus = (norm(seq.focus(:,i)-xdc.center) - xdc.radius) ./ lambda; 
+                else % array, matrix | TODO: skip on generic
+                    vTX(i).focus = seq.focus(3,i) ./ lambda; % depth is to the z == 0 plane
                 end
-                vTX(i).FocalPt = seq.focus(:,i) ./ lambda;
-                vTX(i).focus   = seq.focus(3,i) ./ lambda; % set z value
-                vTX(i).Origin  = seq.focus(:,i) ./ lambda .* [1 1 0]'; % set to z=0
             case "PW"
                 vTX(i).Steer = deg2rad([seq.angles(i), 0]);
                 % vTX(i).focus = 0; % focal distance == 0 for PW
@@ -256,6 +256,7 @@ for i = 1:seq.numPulse
     % approximate for non-planar transducers
     im = median(find(apod(:,i)), 2); % middle element
     vTX(i).Origin = mean(posn(:,[floor(im), ceil(im)]),2); % 
+    vTX(i).Origin = xdc.focActive(apod(:,i), 0); % get the beam origin using this apodization | TODO: skip on generic
 
     % TODO: use computeTXDelays instead?
     % vTX(i).Delay = computeTXDelays(struct(vTX(i))); % requires base workspace variables
