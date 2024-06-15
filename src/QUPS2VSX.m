@@ -178,22 +178,26 @@ vTW = arrayfun(@(tw) tw.computeTWWaveform(Trans, vResource, kwargs.vTPC), kwargs
 fs_available = 250 ./ (100:-1:4); % all supported sampling frequencies (MHz)
 
 % decimation frequency as per sampleMode
-switch kwargs.sample_mode
-    case "NS200BW", fs_target = Trans.frequency * 4;
-    case "BS100BW", fs_target = Trans.frequency * 2;
-    case "BS67BW",  fs_target = Trans.frequency * 2 * 0.67;
-    case "BS50BW",  fs_target = Trans.frequency * 1;
-    case "custom",  fs_target = 1e-6*kwargs.custom_fs;
-    otherwise, error("Sampling mode '" + kwargs.sample_mode + "' unsupported.");
-end
 if isfield(kwargs, "custom_fs")
     fs_target = 1e-6*kwargs.custom_fs;
+else
+    fs_target = Trans.frequency * 4;
 end
-% fs_decim = fs_available(find(fs_available >= fs_target, 1, 'first')); % get first frequency above limit
 fs_decim = fs_available(argmin(abs(fs_available - fs_target))); % round to nearest supported frequency
 
+switch kwargs.sample_mode
+    case "NS200BW", fs_div = 4;
+    case "BS100BW", fs_div = 2;
+    case "BS67BW",  fs_div = 2 * 0.67;
+    case "BS50BW",  fs_div = 1;
+    case "custom",  fs_div = 1;
+    otherwise, error("Sampling mode '" + kwargs.sample_mode + "' unsupported.");
+end
+% effective sampling frequency
+fs_eff = fs_decim / fs_div; 
+
 % get the output data buffer length
-spw = fs_decim / Trans.frequency; % samples per wave
+spw = fs_decim / fs_div / Trans.frequency; % samples per wave
 T = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sample buffer length supported
 
 % make new rx buffer
@@ -295,7 +299,7 @@ for f = 1:size(vRcv,3)
 end
 
 %% SeqControl
-t_puls = round(T / fs_decim) + 50; % pulse wait time in usec
+t_puls = round(T / fs_eff) + 50; % pulse wait time in usec
 t_frm = double(round(t_puls*Mx*seq.numPulse*1.2)); % frame wait time in usec
 wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
 wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_frm ); % max TTNA is 4190000
@@ -354,7 +358,7 @@ if ~isempty(kwargs.vTPC), vBlock.vTPC = kwargs.vTPC; end
 t0l = - 2 * Trans.lensCorrection; % lens correction in wavelengths
 t0p = - vTW.peak; % peak correction in wavelengths
 x = zeros([T Mx*seq.numPulse Trans.numelements kwargs.frames, 0], 'single'); % pre-allocated array
-chd = ChannelData('data', x, 'fs', 1e6*fs_decim, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
+chd = ChannelData('data', x, 'fs', 1e6*fs_eff, 't0', (t0 + t0l + t0p)./xdc.fc, 'order', 'TMNF');
 
 %% added External Functions/Callback
 % restore warning state
