@@ -93,7 +93,7 @@ arguments
     vResource (1,1) VSXResource = VSXResource()
     kwargs.apod (:,:,:,:,1) = 1; % image apodization per tx
     kwargs.units (1,1) string {mustBeMember(kwargs.units, ["mm", "wavelengths"])} = "mm"
-    kwargs.vTW (1,:) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 1, 1]);
+    kwargs.vTW (1,:) VSXTW = VSXTW('type', 'parametric', 'Parameters', [us.xdc.fc/1e6, 0.67, 2, 1]);
     kwargs.vTGC VSXTGC {mustBeScalarOrEmpty} = VSXTGC( ...
         'CntrlPts', [0,297,424,515,627,764,871,1000],...
         'rangeMax', max(vecnorm(us.scan.positions,2,1),[],'all') ./ us.lambda ...
@@ -144,7 +144,7 @@ xdc = Transducer.Verasonics(Trans);
 % unsatisfiable
 % TODO: validate with Trans.connector
 apd = seq.apodization(xdc);
-M = max(sum(apd,1)); % max number of simultaneously transmitting elements
+M = max(sum(logical(apd),1)); % max number of simultaneously transmitting elements
 if M > vResource.Parameters.numTransmit
     warning("QUPS2VSX:multiplexTX", ...
         "Multiplexing the transmit aperture to satisfy the number of transmit channels." ...
@@ -215,7 +215,6 @@ b = ~isscalar(vTW); % whether vTW is an array
 for i = 1:numel(vTX), vTX(i).waveform = vTW(i*b+~b); end % index=i or index=1
 
 % get delay and apodization matrices
-posn  = xdc.positions();
 delay = - seq.delays(xdc) * xdc.fc;
 apod  = seq.apodization(xdc);
 % delay(~apod) = nan; % deactivate non-active elements, TODO: debug this
@@ -243,9 +242,11 @@ for i = 1:seq.numPulse
                 else % array, matrix | TODO: skip on generic
                     vTX(i).focus = seq.focus(3,i) ./ lambda; % depth is to the z == 0 plane
                 end
+                vTX(i).Origin = xdc.focActive(apod(:,i), 0) ./ lambda; % get the beam origin using this apodization | TODO: skip on generic
             case "PW"
                 vTX(i).Steer = deg2rad([seq.angles(i), 0]);
-                % vTX(i).focus = 0; % focal distance == 0 for PW
+                vTX(i).focus = 0; % focal distance == 0 for PW
+                vTX(i).Origin = 0; % = [0 0 0] for PW
             case "FSA"
                 % vTX(i).focus = 0; % focal distance == 0 for compliance
                 %do nothing
@@ -258,9 +259,7 @@ for i = 1:seq.numPulse
 
     % attempt to find the virtual origin as center of active aperture
     % approximate for non-planar transducers
-    im = median(find(apod(:,i)), 2); % middle element
-    vTX(i).Origin = mean(posn(:,[floor(im), ceil(im)]),2); % 
-    vTX(i).Origin = xdc.focActive(apod(:,i), 0); % get the beam origin using this apodization | TODO: skip on generic
+    % im = median(find(apod(:,i)), 2); % middle element
 
     % TODO: use computeTXDelays instead?
     % vTX(i).Delay = computeTXDelays(struct(vTX(i))); % requires base workspace variables
