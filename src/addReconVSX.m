@@ -8,14 +8,14 @@ arguments
     kwargs.numFrames (1,1) double = 1
     kwargs.multipage (1,1) logical = false
     kwargs.display (1,1) logical = true
-    kwargs.apod (:,:,:,:,:) {mustBeNumericOrLogical} = 1
+    kwargs.apod (:,:,:,1,:,:) {mustBeNumericOrLogical} = 1
 end
 
 %% Validate sizing
 Tx = prod(size(vRcv,2));
-assert(all(any(size(kwargs.apod,1:5) == [[scan.size,Tx,kwargs.numFrames]; ones(1,5)],1)), ...
+assert(all(any(size(kwargs.apod,1:6) == [[scan.size,1,Tx,kwargs.numFrames]; ones(1,6)],1)), ...
     "The size of the apodization(" +...
-    join(string(size(kwargs.apod,1:5)),", ") +...
+    join(string(size(kwargs.apod,1:6)),", ") +...
     ") must be compatible with the scan (" + ...
     join(string(scan.size),", ") +...
     ") and the number of transmits (" + Tx + ")." ...
@@ -47,7 +47,7 @@ vReconInfo(end).Post = "IQ2IntensityImageBuf"; % copy result
 
 % threadsync conflict? Overlapping regions are processed in parallel, so
 % this introduces a race conditions if they overlap
-ts = (any( (sum(kwargs.apod,4:5) > 1) .* kwargs.apod , 1:3)); % Tx x F
+ts = (any( (sum(kwargs.apod,5:6) > 1) .* kwargs.apod , 1:3)); % Tx x F
 [vReconInfo.threadSync] = deal(any(ts,'all')); %%% TODO: can we sort into independent groups, shuffle to trick the FPGA, and compute this ind. per region?
 
 % if isscalar(vReconInfo), vReconInfo.mode = 'replaceIntensity'; end % 1 tx
@@ -58,8 +58,8 @@ vPData = VSXPData.QUPS(scan);
 
 % get the apodization in it's full size
 ap = logical(kwargs.apod); % mask
-Psz = [scan.size, Tx, 1+0*size(vRcv,3)]; % full sizs (I x Tx x [1*|F])
-ap = repmat(ap, Psz ./ size(ap,1:5)); % explicit brodcast
+Psz = [scan.size, 1, Tx, 1+0*size(vRcv,3)]; % full sizs (I x Tx x [1*|F])
+ap = repmat(ap, Psz ./ size(ap,1:6)); % explicit brodcast
 
 % convert to address / count format
 aps = num2cell(ap, 1:3); % pack pixels per cell
