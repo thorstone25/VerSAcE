@@ -205,7 +205,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             %% assign indices
             % record event indices per block
             for i = 1:numel(vsi)
-                for f = ["pre", "capture", "post", "next", "first", "last"],
+                for f = ["pre", "capture", "post", "next", "first", "last", "all"],
                     [~, vsi(i).(f)] = ismember(vsi(i).(f), vEvent); 
                 end
                 [~, vsi(i).vUI]  = ismember(vsi(i).vUI , vUI );
