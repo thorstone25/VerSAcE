@@ -108,6 +108,7 @@ arguments
     kwargs.multi_rx (1,1) logical = (isa(xdc, 'struct') && (xdc.numelements > vResource.Parameters.numRcvChannels)) ...
         || (isa(xdc, 'Transducer') && (xdc.numel > vResource.Parameters.numRcvChannels))
     kwargs.set_foci (1,1) logical = true
+    kwargs.prf (1,1) double {mustBeNonnegative} = 0 % PRF in Hz
 end
 
 % squash obj to struct warning
@@ -298,10 +299,19 @@ for f = 1:size(vRcv,3)
 end
 
 %% SeqControl
-t_puls = round(T / fs_eff) + 50; % pulse wait time in usec
-t_frm = double(round(t_puls*Mx*seq.numPulse*1.2)); % frame wait time in usec
-wait_for_tx_pulse        = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
-wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_frm ); % max TTNA is 4190000
+t_puls = round(2 * dfar / Trans.frequency) + 5; % pulse wait time in usec (+5us buffer)
+t_frm  = double(t_puls*Mx*seq.numPulse); % total frame time in usec 
+wait_for_tx_pulse = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_puls);
+if kwargs.prf,
+    t_last = round((1e6/kwargs.prf) - (t_frm - t_puls));
+    assert(t_last >= t_puls, "VERSACE:QUPS2VSX:UnsatisfiablePRF", ... 
+        "A PRF of "+kwargs.prf+" Hz at a range of "+1e3*kwargs.range(end)+" mm for "+Mx+" x "+seq.numPulse+" transmits requires a final wait time of "+t_last+" usec, which subceeds the minimum required pulse wait time of "+t_puls+" usec."...
+        +newline+"The maximum satisfiable PRF is "+(1e6/(t_frm - t_puls))+" Hz."...
+        );
+    wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_last); % max TTNA is 4190000
+else
+    wait_for_pulse_sequence = wait_for_tx_pulse; % no PRF requested - use the same wait time
+end    
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
 no_operation             = VSXSeqControl('command', 'noop', 'argument', 100/0.2); % 'condition', 'Hw&Sw');
 
@@ -329,7 +339,7 @@ end
 % make recon image and return to MATLAB
 if kwargs.recon_VSX
     [recon_event, vPData] = addReconVSX(scan, vTX, vRcv, vResource, 'multipage', false, 'numFrames', kwargs.frames, 'apod', kwargs.apod);
-    recon_event.recon.newFrameTimeout = 50 * 1e-3*wait_for_pulse_sequence.argument; % wait time in msec ~ heuristic is approx 50 x acquisition time
+    recon_event.recon.newFrameTimeout = 50 * t_puls*Mx*seq.numPulse; % wait time in usec ~ heuristic is approx 50 x acquisition time
 
     vEvent = reshape(vEvent, [1 Mx*seq.numPulse kwargs.frames]); % combine rx multiplexing
     vEvent(:,end+1,:) = recon_event; % assign to end of TX-loop
