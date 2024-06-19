@@ -2,7 +2,7 @@ classdef VSXProcess < matlab.mixin.Copyable
     properties
         classname (1,1) string {mustBeMember(classname, ["Image", "Doppler", "External"])} = "External"
         method (1,1) string
-        Parameters (1,:) cell
+        Parameters (1,1) struct
     end
     
     methods

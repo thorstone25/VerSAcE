@@ -124,8 +124,9 @@ classdef VSXBlock < matlab.mixin.Copyable
             % PData can be referenced in the Parameters field of a Process 
             % (Image or Doppler specifically, if it exists) or in the Recon
             % structure
-            vpd = cellfun(@(p) p(2*find("pdatanum" == p(1:2:end))), {vProcess(iImg | iExt).Parameters}, 'UniformOutput', false);
-            if ~isempty(vpd), vpd = [vpd{:}]; end
+            % vpd = cellfun(@(p) p(2*find("pdatanum" == p(1:2:end))), {vProcess(iImg | iExt).Parameters}, 'UniformOutput', false);
+            pprm = {vProcess.Parameters};  % process params (heterogeneous structs)
+            vpd = cellfun(@(p) p.pdatanum, pprm(cellfun(@(p)isfield(p,'pdatanum'), pprm)), 'UniformOutput', false);
             vPData = unique([vRecon.pdatanum, vpd{:}], 'stable');
 
             % Vantage requires `Receive`s to be sorted by buffer, frame, and acquisitions
@@ -308,7 +309,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             % Parse Process arguments
             for i = 1:numel(Process)
                 % turn the params into a struct for easier processing
-                prms = struct(Process(i).Parameters{:});
+                prms = Process(i).Parameters;
                 
                 % for all referenced buffers or display windows
                 for f = ["displayWindow", "pdatanum", "imgbufnum", "srcbufnum", "dstbufnum"]
@@ -336,11 +337,9 @@ classdef VSXBlock < matlab.mixin.Copyable
                                         error("Unrecognized " + sb + " value for Process " + i + " of class " + Process(i).classname + ".");
                                 end
                         end
-                        % get argument index
-                        j = 2*find(f == string(Process(i).Parameters(1:2:end)));
 
                         % link
-                        if ~isempty(j), Process(i).Parameters{j} = safeIsMember(Process(i).Parameters{j}, arr); end
+                        Process(i).Parameters.(f) = safeIsMember(Process(i).Parameters.(f), arr);
                     end
                 end
             end
@@ -361,9 +360,12 @@ classdef VSXBlock < matlab.mixin.Copyable
             [vStruct.TW.sysExtendBL       ] = dealfun(@double, vStruct.TW.sysExtendBL       );
             [vStruct.TW.perChWvfm         ] = dealfun(@double, vStruct.TW.perChWvfm         );
             for i = 1:numel(vStruct.Process)
-                j = vStruct.Process(i).Parameters(1:2:end) == "display";
-                k = 2*find(j);
-                if any(j), vStruct.Process(i).Parameters{k} = double(vStruct.Process(i).Parameters{k}); end
+                if isfield(vStruct.Process(i).Parameters, "display"), vStruct.Process(i).Parameters.display = double(vStruct.Process(i).Parameters.display); end
+            end
+
+            % convert Process.Parameter structs to cell arrays
+            for i = 1:numel(vStruct.Process)
+                vStruct.Process(i).Parameters = namedargs2cell(vStruct.Process(i).Parameters);
             end
 
             % remove empty structures, or structures of all empty
@@ -372,7 +374,6 @@ classdef VSXBlock < matlab.mixin.Copyable
                 if isempty(vStruct.(f))
                     vStruct = rmfield(vStruct, f);
                 end
-
             end
 
             % convert all strings to char

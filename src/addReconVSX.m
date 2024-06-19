@@ -116,7 +116,7 @@ if kwargs.display
 
     %% Process
     display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
-    display_image_process.Parameters = {
+    display_image_process.Parameters = struct( ... 
         'imgbufnum', vbuf_im,...   % number of buffer to process.
         'framenum',-1,...   % (-1 => lastFrame)
         'pdatanum', vPData,...    % PData structure to use
@@ -132,8 +132,8 @@ if kwargs.display
         'compressFactor',40,...
         'mappingMethod','full',...
         'display',1,...      % display image after processing
-        'displayWindow', vDisplayWindow, ...
-        };
+        'displayWindow', vDisplayWindow ...
+    );
 
     %% Event
     vEvent = VSXEvent(...
