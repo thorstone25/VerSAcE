@@ -4,16 +4,18 @@ classdef VSXBlock < matlab.mixin.Copyable
         pre (1,:) VSXEvent  = VSXEvent.empty % pre-processing events
         post (1,:) VSXEvent = VSXEvent.empty % post-processing events
         next VSXEvent {mustBeScalarOrEmpty} = VSXEvent.empty % event to jump to after loop
-        vUI VSXUI = VSXUI.empty % UI events
-        vTPC VSXTPC = VSXTPC("name","Default"); % Default TPC (no arguments)
+        vUI (1,:) VSXUI = VSXUI.empty % UI events
+        vTPC VSXTPC {mustBeScalarOrEmpty} = VSXTPC.empty; % Default TPC (no arguments)
     end
     properties (Dependent, SetAccess=protected)
-        first % first event in the block
-        last  % last event in the block
+        first (1,1) VSXEvent % first event in the block
+        last  (1,1) VSXEvent % last event in the block
+        all   (1,:) VSXEvent % all events in the block
     end
     methods
-        function ev = get.first(vb), evs = [vb.pre, vb.capture(:)', vb.post]; ev = evs( 1 ); end
-        function ev = get.last(vb) , evs = [vb.pre, vb.capture(:)', vb.post]; ev = evs(end); end
+        function evs = get.all(vb),  evs = [vb.pre, vb.capture(:)', vb.post]; end
+        function ev = get.first(vb), ev = vb.all( 1 ); end
+        function ev = get.last(vb) , ev = vb.all(end); end
     end
     methods
         function obj = VSXBlock(kwargs)
@@ -67,22 +69,32 @@ classdef VSXBlock < matlab.mixin.Copyable
             vblock VSXBlock
             vResource (1,1) VSXResource = VSXResource(); % default resource
             Trans {mustBeScalarOrEmpty} = struct.empty % transducer
-            kwargs.TXPD (1,1) logical = ~isempty([[vblock.pre.recon], [vblock.capture.recon], [vblock.post.recon]]) % whether to parse TXPD
+            kwargs.TXPD (1,1) logical = ~isempty([vblock.all.recon]) % whether to parse TXPD
+            kwargs.set_TPC (1,1) logical = true
         end
             
             % identify which block each "next" value belongs to if any
             % if no matching 'other' block - this is independent!
             blkid = num2cell(zeros(1,numel(vblock)));
-            for i = numel(vblock):-1:1
-                for j = numel(vblock):-1:1
-                    if ismember(vblock(i).next, vblock(j).capture)
-                        blkid{i} = j; break;
+            blksq =     cell(      1,numel(vblock) );
+            [blksq{:}] = deal(VSXSeqControl.empty); % initialize
+            for i = numel(vblock):-1:1 % for each blcok
+                for j = numel(vblock):-1:1  % for each candidate next block
+                    if ismember(vblock(i).next, vblock(j).all) % if j is the next block
+                        blkid{i} = j; % set  j as next
+                        if kwargs.set_TPC && (vblock(i).vTPC ~= vblock(j).vTPC) % transition TPC if required
+                            blksq{i} = [ ...
+                                VSXSeqControl('command','setTPCProfile','argument', vblock(j).vTPC, 'condition','immediate'), ...
+                                VSXSeqControl('command', 'noop', 'argument', 10e3) ... 10ms wait time to transition (very conservative)
+                                ];
+                        end
+                        break;
                     end
                 end
             end
 
             % get the sequence of events, in order
-            vEvent = arrayfun(@(vb, i) {[vb.pre(:); vb.capture(:); vb.post(:); jump2event(vb.next, i{1})]'}, vblock, blkid); % order as pre, capture, post, jump2next(next_event)
+            vEvent = arrayfun(@(vb, i, sq) {[vb.pre(:); vb.capture(:); vb.post(:); jump2event(vb.next, i{1}, sq{1})]'}, vblock, blkid, blksq); % order as pre, capture, post, jump2next(next_event)
             vEvent = unique([vEvent{:}], 'stable');
 
             %% get arrays of all properties
@@ -245,7 +257,7 @@ classdef VSXBlock < matlab.mixin.Copyable
 
             % For UI: allow an 'auto' option for 'button positions' arguments
             pos = "User" + ["A","B","C"] + flip(1:8)';
-            prf = ["UserB"+(1:7), "UserC"+(1:3), "UserA"+(1:2), "UserC"+(4:8), "UserB8"];
+            prf = ["UserB"+(1:7), "UserC"+(1:3), "UserA"+(1:2), "UserC"+(7:8), "UserA"+(4), "UserB8"];
             pos = union(prf, pos, 'stable');
             for i = 1:numel(UI)
                 upos = arrayfun(@(UI) string(UI.Control{1}), UI); % positions in use
@@ -756,12 +768,15 @@ else
 end
 end
 
-function vEvent = jump2event(vEvent, i)
-arguments, vEvent {mustBeScalarOrEmpty}, i double {mustBeScalarOrEmpty} = []; end
+function vEvent = jump2event(vEvent, i, sqs)
+% JUMP2EVENT - Create an event to jump to another event
+% 
+% vEvent = jump2event(vEvent, i) outputs a VSXEvent to jump from VSXBlock i to the given VSXEvent vEvent.
+arguments, vEvent {mustBeScalarOrEmpty}, i double {mustBeScalarOrEmpty} = []; sqs (1,:) VSXSeqControl = VSXSeqControl.empty; end
 if isscalar(vEvent)
     if i ~= 0 % 0 -> no matching block -> vEvent is the next Event!
         vEvent = VSXEvent('info', "Jump to " + vEvent.info + (" of block " + i), 'seqControl', ...
-            VSXSeqControl('command', 'jump', 'argument', vEvent) ...
+            [sqs, VSXSeqControl('command', 'jump', 'argument', vEvent)] ...
             );
     end
 end
