@@ -7,12 +7,16 @@ arguments
     vSeq (1,:) VSXSeqControl = VSXSeqControl('command', 'noop', 'argument', 100/0.2);
     vPData {mustBeScalarOrEmpty} = VSXPData.QUPS(scan)
     kwargs.numFrames (1,1) double = 1
+    kwargs.frames (1,1) string {mustBeMember(kwargs.frames, ["last","all"])} = "last"
     kwargs.multipage (1,1) logical = false
     kwargs.display (1,1) logical = true
     kwargs.name (1,1) string = "Do " + fnm;
     kwargs.UItyp (1,1) string {mustBeMember(kwargs.UItyp,["VsToggleButton", "VsPushButton", "None"])} = "None"
     kwargs.UIpos (1,1) string {mustBeMember(kwargs.UIpos, ["auto","UserB1","UserB2","UserB3","UserB4","UserB5","UserB6","UserB7","UserB8","UserC1","UserC2","UserC3","UserC4","UserC5","UserC6","UserC7","UserC8","UserA1","UserA2"])} = "auto";
 end
+
+% select frames
+switch kwargs.frames, case "all", f=0; case "last", f=-1; end
 
 % Image buffer
 vbuf_im    = VSXImageBuffer.fromPData(vPData);
@@ -30,7 +34,7 @@ compute_image_process = VSXProcess('classname', 'External', 'method', fnm);
 compute_image_process.Parameters = struct( ...
     'srcbuffer','receive',...
     'srcbufnum', vRcvBuf,...
-    'srcframenum',0,... 0 for all frames
+    'srcframenum',f,... 0 for all frames
     'dstbuffer','image', ...
     'dstbufnum', vbuf_im, ...
     'dstframenum', -1 ... -1 for last frame

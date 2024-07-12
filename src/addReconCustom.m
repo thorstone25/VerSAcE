@@ -6,11 +6,15 @@ arguments
     vSeq (1,:) VSXSeqControl = VSXSeqControl.empty
     vPData (1,1) = VSXPData.QUPS(scan)
     kwargs.numFrames (1,1) double = 1
+    kwargs.frames (1,1) string {mustBeMember(kwargs.frames, ["last","all"])} = "last"
     kwargs.multipage (1,1) logical = false
     kwargs.display (1,1) logical = true
 end
 
 nm = "RFDataImg"; % function name
+
+% select frames
+switch kwargs.frames, case "all", f=0; case "last", f=-1; end
 
 % Image buffer
 vbuf_inter = VSXInterBuffer.fromPData(vPData, 'numFrames', kwargs.numFrames); 
@@ -29,7 +33,7 @@ compute_image_process = VSXProcess('classname', 'External', 'method', nm);
 compute_image_process.Parameters = struct( ...
     'srcbuffer','receive',...
     'srcbufnum', vbuf_rx,...
-    'srcframenum',0,... 0 for all frames
+    'srcframenum',f,... -1 for last frame, 0 for all frames
     'dstbuffer','image', ...
     'dstbufnum', vbuf_im, ...
     'dstframenum', -1 ... -1 for last frame
@@ -38,7 +42,7 @@ compute_image_process.Parameters = struct( ...
 display_image_process = VSXProcess('classname', 'Image', 'method', 'imageDisplay');
 display_image_process.Parameters = struct( ...
     'imgbufnum', vbuf_im,...   % number of buffer to process.
-    'framenum',-1,...   % (-1 => lastFrame)
+    'framenum',-1, ...   % (-1 => lastFrame)
     'pdatanum', vPData,...    % PData structure to use
     'pgain',1.0,...            % pgain is image processing gain
     'reject',2,...      % reject level
