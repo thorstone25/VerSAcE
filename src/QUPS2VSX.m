@@ -218,7 +218,7 @@ for i = 1:numel(vTX), vTX(i).waveform = vTW(i*b+~b); end % index=i or index=1
 % get delay and apodization matrices
 delay = - seq.delays(xdc) * xdc.fc;
 apod  = seq.apodization(xdc);
-% delay(~apod) = nan; % deactivate non-active elements, TODO: debug this
+delay(~apod) = nan; % deactivate non-active elements, TODO: debug this
 t0    = min(delay, [], 1, 'omitnan'); % min over elements
 if all(t0(1) == t0, 2), t0 = t0(1); end % scalarize if possible
 delay = delay - t0; % don't include 0
@@ -243,7 +243,7 @@ for i = 1:seq.numPulse
                 else % array, matrix | TODO: skip on generic
                     vTX(i).focus = seq.focus(3,i) ./ lambda; % depth is to the z == 0 plane
                 end
-                vTX(i).Origin = xdc.focActive(apod(:,i), 0) ./ lambda; % get the beam origin using this apodization | TODO: skip on generic
+                vTX(i).Origin = xdc.focActive(apod(:,i), 0);% ./ lambda; % get the beam origin using this apodization | TODO: skip on generic
             case "PW"
                 vTX(i).Steer = deg2rad([seq.angles(i), 0]);
                 vTX(i).focus = 0; % focal distance == 0 for PW
