@@ -78,10 +78,10 @@ classdef VSXBlock < matlab.mixin.Copyable
             blkid = num2cell(zeros(1,numel(vblock)));
             blksq =     cell(      1,numel(vblock) );
             [blksq{:}] = deal(VSXSeqControl.empty); % initialize
-            for i = numel(vblock):-1:1 % for each blcok
+            for i = numel(vblock):-1:1 % for each block
                 for j = numel(vblock):-1:1  % for each candidate next block
                     if ismember(vblock(i).next, vblock(j).all) % if j is the next block
-                        blkid{i} = j; % set  j as next
+                        blkid{i} = j; % set j as next
                         if kwargs.set_TPC && (vblock(i).vTPC ~= vblock(j).vTPC) % transition TPC if required
                             blksq{i} = [ ...
                                 VSXSeqControl('command','setTPCProfile','argument', vblock(j).vTPC, 'condition','immediate'), ...
@@ -96,6 +96,14 @@ classdef VSXBlock < matlab.mixin.Copyable
             % get the sequence of events, in order
             vEvent = arrayfun(@(vb, i, sq) {[vb.pre(:); vb.capture(:); vb.post(:); jump2event(vb.next, i{1}, sq{1})]'}, vblock, blkid, blksq); % order as pre, capture, post, jump2next(next_event)
             vEvent = unique([vEvent{:}], 'stable');
+            
+            % if using a high power transmit TPC, then set the 1st TPC to avoid undefined state
+            if kwargs.set_TPC && any(arrayfun(@(v) v.vTPC.ishpt, vblock))
+                vEvent = [VSXEvent('seqControl', [ ...
+                    VSXSeqControl('command','setTPCProfile','argument', vblock(1).vTPC, 'condition','immediate'), ...
+                    VSXSeqControl('command', 'noop', 'argument', 10e3) ... 10ms wait time to transition (very conservative)
+                    ]), vEvent];
+            end
 
             %% get arrays of all properties
             [vTx,  itx]     = unique([vEvent.tx]        , 'stable'); 
@@ -133,6 +141,13 @@ classdef VSXBlock < matlab.mixin.Copyable
             i = safeIsMember([vRcv.bufnum], vRcvBuffer); % buffer indexing
             [~, i] = sortrows([i; [vRcv.framenum]; [vRcv.acqNum];]'); % acquisition/frame/buffer sort order
             vRcv = vRcv(i); % re-order
+
+            % use TPC(5) for high power transmit (hpt)
+            i = find([vTPC.ishpt]); %#ok<PROPLC> % get HPT index
+            if isscalar(i), if i < 5, vTPC(end+1:5) = copy(VSXTPC()); vTPC([5 i]) = vTPC([i 5]); end, %#ok<PROPLC> % swap high power vTPC into index 5
+            elseif isempty(i), % pass
+            else, error("VerSAcE:link:multipleHighPowerTPCProfiles", nnz(i)+" high power transmit TPCs were requested, but only 1 can be selected.");
+            end
 
             %% assign aperture indices if possible
             if ~isempty(Trans) && isfield(Trans, 'HVMux')
@@ -201,6 +216,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             
             % remove all empty properties of TPC
             for f = string(fieldnames(TPC))', TPC = rmifempty(TPC, f); end
+            TPC = rmfield(TPC,'ishpt');
 
             %% assign indices
             % record event indices per block

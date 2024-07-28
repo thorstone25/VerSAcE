@@ -5,6 +5,7 @@ classdef VSXTPC < matlab.mixin.Copyable
         highVoltageLimit double {mustBeScalarOrEmpty} % (optional) high voltage limit based on use model
         xmitDuration double {mustBeScalarOrEmpty} % (optional) longest transmit duration (usec)
         hv double{mustBeScalarOrEmpty} % (optional) initial High Voltage value at startup
+        ishpt (1,1) logical = false % whether high power transmit
     end
     methods
         function obj = VSXTPC(kwargs)
