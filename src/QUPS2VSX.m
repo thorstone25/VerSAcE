@@ -187,18 +187,18 @@ end
 fs_decim = fs_available(argmin(abs(fs_available - fs_target))); % round to nearest supported frequency
 
 switch kwargs.sample_mode
-    case "NS200BW", fs_div = 4;
-    case "BS100BW", fs_div = 2;
-    case "BS67BW",  fs_div = 2 * 0.67;
-    case "BS50BW",  fs_div = 1;
-    case "custom",  fs_div = 1;
+    case "NS200BW", fs_quad_div = 1;
+    case "BS100BW", fs_quad_div = 2;
+    case "BS67BW",  fs_quad_div = 1;
+    case "BS50BW",  fs_quad_div = 4;
+    case "custom",  fs_quad_div = 1;
     otherwise, error("Sampling mode '" + kwargs.sample_mode + "' unsupported.");
 end
 % effective sampling frequency
-fs_eff = fs_decim / fs_div; 
+fs_eff = fs_decim / fs_quad_div; 
 
 % get the output data buffer length
-spw = fs_decim / fs_div / Trans.frequency; % samples per wave
+spw = fs_decim / fs_quad_div / Trans.frequency; % samples per wave
 T = 128 * ceil(2 * (dfar - dnear - 1/spw) * spw / 128); % only modulus 128 sample buffer length supported
 
 % make new rx buffer
