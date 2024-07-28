@@ -7,8 +7,9 @@ us = UltrasoundSystem('xdc', xdc, 'seq', seq, 'scan', scn);
 [scn.dx, scn.dz] = deal(us.lambda / 4);
 
 %% Create necessary VSX objects (outside of QUPS)
+hashpt = true; % set true if system has HIFU or Extended Transmit support
 vRes = VSXResource(); % global resource definition
-vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
+vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage, 'ishpt', hashpt); % max power
 
 % Define a stepped LFM chirp
 df = 1.0; % step size in MHz
@@ -30,20 +31,18 @@ filename = fullfile(vantageroot, 'MatFiles/qups-vsx.mat');
 save(filename, '-struct', 'vs');
 
 %% Run
-VSX;
+run VSX;
 
 %% Post-process
 % import to QUPS
 if ~exist('RcvData', 'var'), RcvData = {RData}; end % alias
 c0   = Resource.Parameters.speedOfSound;
-[us, chd] = UltrasoundSystem.Verasonics(Trans, TX, TW, 'c0', c0, 'Receive', Receive, 'RcvData', RcvData, 'PData', PData); % import to QUPS                                [us, chd] = UltrasoundSystem.Verasonics(Trans, TX, TW, 'Receive', Receive, 'RcvData', RcvData); % import to QUPS
+[us, chd] = UltrasoundSystem.Verasonics(Trans, TX, TW, 'c0', c0, 'Receive', Receive, 'RcvData', RcvData, 'PData', PData); % import to QUPS
 sct = Scatterers.Verasonics(Media, 'c0', c0, 'scale', c0./us.xdc.fc);
 [v, ~, wv] = Waveform.Verasonics(TW, us.xdc.fc); % voltage, 2wy waveform
 
-% plot the import
+% pre-processing
 chd = hilbert(singleT(chd));
-figure; plot(us); hold on; plot(sct, '.');
-figure; imagesc(chd); dbr echo 80; animate(chd.data, 'loop', false);
 
 % pulse compression
 wv = Waveform('t', wv.time, 'samples', wv.samples .* hamming(numel(wv.samples))); % apply windowing
@@ -51,5 +50,9 @@ chdp = convt(chd, reverse(wv)); % matched filter
 chdp.t0 = chdp.t0 - 2*Trans.lensCorrection / us.xdc.fc; % residual phase adjustment?
 
 % image
-b = DAS(us, chdp, 'apod',  us.apAcceptanceAngle(45));
-figure; imagesc(us.scan, b); dbr b-mode 60; hold on; plot(sct, 'r.');
+b = DAS(us, chdp, us.apAcceptanceAngle(30), us.apTxParallelogram());
+
+% plot
+figure; plot(us); hold on; plot(sct, '.'); % geometry
+figure; imagesc(chd); dbr echo 80; animate(chd.data, 'loop', false); % Channel Data
+figure; imagesc(us.scan, b); dbr b-mode 60; hold on; plot(sct, 'r.'); % B-mode
