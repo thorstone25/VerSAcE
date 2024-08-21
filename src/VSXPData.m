@@ -3,7 +3,7 @@ classdef VSXPData < matlab.mixin.Copyable
         Coord (1,1) string {mustBeMember(Coord, ["rectangular",...
                                                  "polar",...
                                                  "spherical"])} = "rectangular"
-        PDelta (1,:) double
+        PDelta (1,:) double {mustBeFinite}
         Size (1,:) double
         Origin (1,:) double
         Region (1,:) struct = struct('Shape',struct('Name','PData'),'numPixels',[],'PixelsLA',[]);
