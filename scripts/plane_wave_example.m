@@ -15,18 +15,6 @@ us  = UltrasoundSystem('seq', seq, 'xdc', xdc, 'scan', scan, 'fs', 4*xdc.fc);
 % apod = swapdim(apTxParallelogram(us, seq.angles, [-15 15]),4,5);
 
 %%
-
-% % get the valid tx frequencies (MHz)
-% A = (6:197); 
-% TxFreq = 250e6 ./ (2.*A); 
-% TxFreq = TxFreq(4e6 <= TxFreq & TxFreq <= 11e6);
-% 
-% % pick the transmit frequency
-% flds = dir("data/freq-est/f*");
-% flds = flds([flds.isdir]);
-% frqs = double(string(extractBetween({flds.name},"f","-")));
-% fc = setdiff(round(TxFreq), frqs);
-% fc = fc(1);
 fc = 1e6*Trans.frequency;
 
 % constant resources
@@ -76,10 +64,10 @@ save(filename, '-struct', 'vs');
 save(replace(filename,"qups-vsx.mat","qups-conf.mat"), "us", "chd");
 
 % set output save directory
-global VSXOOD_SAVE_DIR;
+global VERSACE_SAVE_DIR;
 svnm = "f"+round(fc)+"-"+string(datetime("now"), "yyMMdd-HHmmss");
-VSXOOD_SAVE_DIR = fullfile(pwd, "data", "freq-est", svnm);
-if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
+VERSACE_SAVE_DIR = fullfile(pwd, "data", "freq-est", svnm);
+if ~exist(VERSACE_SAVE_DIR, 'dir'), mkdir(VERSACE_SAVE_DIR); end
 
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore;
@@ -88,8 +76,8 @@ clear RFDataImg RFDataProc RFDataStore;
 VSX;
 
 %% Post-processing - parse and save the raw data
-global VSXOOD_SAVE_DIR hf; %#ok<REDEFGG> % cleared by VSX
-fl = dir(fullfile(VSXOOD_SAVE_DIR, "*.mat")); % get the files
+global VERSACE_SAVE_DIR hf; %#ok<REDEFGG> % cleared by VSX
+fl = dir(fullfile(VERSACE_SAVE_DIR, "*.mat")); % get the files
 fl = string(fullfile({fl.folder}, {fl.name})); % all mat-files
 fl = fl(1); % choose first
 
@@ -129,8 +117,8 @@ return;
 %% Post processing - parse and beamform data from the 2nd block
 
 % grab most recent dataset
-global VSXOOD_SAVE_DIR; %#ok<REDEFGG> % cleared by VSX
-flds = dir(fullfile(VSXOOD_SAVE_DIR, '*_*_*.mat')); % access mat-files in or folder
+global VERSACE_SAVE_DIR; %#ok<REDEFGG> % cleared by VSX
+flds = dir(fullfile(VERSACE_SAVE_DIR, '*_*_*.mat')); % access mat-files in or folder
 dates = reshape(datetime([flds.datenum], 'ConvertFrom', 'datenum'), size(flds)); % file dates
 i = argmax(dates); % most recent file
 vs = load(fullfile(flds(i).folder, flds(i).name)); % data

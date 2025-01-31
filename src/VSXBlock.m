@@ -70,7 +70,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             vResource (1,1) VSXResource = VSXResource(); % default resource
             Trans {mustBeScalarOrEmpty} = struct.empty % transducer
             kwargs.TXPD (1,1) logical = ~isempty([vblock.all.recon]) % whether to parse TXPD
-            kwargs.set_TPC (1,1) logical = true
+            kwargs.set_TPC (1,1) logical = numel(unique([vblock.vTPC])) > 1 % set transitions if more than 1 TPC
         end
             
             % identify which block each "next" value belongs to if any
@@ -82,7 +82,7 @@ classdef VSXBlock < matlab.mixin.Copyable
                 for j = numel(vblock):-1:1  % for each candidate next block
                     if ismember(vblock(i).next, vblock(j).all) % if j is the next block
                         blkid{i} = j; % set j as next
-                        if kwargs.set_TPC && (vblock(i).vTPC ~= vblock(j).vTPC) % transition TPC if required
+                        if kwargs.set_TPC && (vblock(i).vTPC ~= vblock(j).vTPC) % transition TPC if required (TODO: handle empty TPC criteria)
                             blksq{i} = [ ...
                                 VSXSeqControl('command','setTPCProfile','argument', vblock(j).vTPC, 'condition','immediate'), ...
                                 VSXSeqControl('command', 'noop', 'argument', 10e3) ... 10ms wait time to transition (very conservative)

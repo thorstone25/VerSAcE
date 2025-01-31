@@ -7,7 +7,7 @@ xdc = Transducer.Verasonics(Trans); % VSX -> QUPS
 % pulse sequences
 P = 16; % pilot every P pulses
 seq0 = Sequence('type','FSA','c0', c0, 'numPulse',xdc.numel); % FSA acquisition
-seqp = Sequence('type','VS' ,'c0', c0, 'focus',[0;0;50e-3]*ones([1,1+xdc.numel/P])); % pilot pulses
+seqp = Sequence('type','FC' ,'c0', c0, 'focus',[0;0;50e-3]*ones([1,1+xdc.numel/P])); % pilot pulses
 
 % systems
 us0 = UltrasoundSystem('xdc', xdc, 'seq', seq0);
@@ -27,7 +27,7 @@ F = 10; % number of frames
 
 % find transmit events before which we will insert the pilot pulses
 [vbp.capture.info] = dealfun(@(x)"Pilot " + x, vbp.capture.info); % prepend name for clarity
-istr   = "Tx "+(0:P:xdc.numel)'+" - Frame "+1;  % matching info strings
+istr   = "Tx "+(0:P:xdc.numel)'+" - Ap 1 - Frame "+1;  % matching info strings
 [~, i] = ismember(istr, [vb0.capture.info]); % find matching (previous) transmits
 es     = [VSXEvent; vb0.capture(i(2:end,1))]; % insert pulse after these events (dummy event to cause matching index to be 0 for frame 1)
 
@@ -35,7 +35,7 @@ es     = [VSXEvent; vb0.capture(i(2:end,1))]; % insert pulse after these events 
 vb  = copy(vb0); % make the final block the modified fsa block
 for j = 1:numel(es) % for each remaining pilot pulse
     [~,k] = ismember(es(j), vb.capture); % find matching event (row)
-    vb.capture = [vb.capture(1:k,:); vbp.capture(j,:); vb.capture(k+1:end,:)]; % insert pilot pulse
+    vb.capture = cat(2, vb.capture(:,1:k,:), vbp.capture(:,j,:), vb.capture(:,k+1:end,:)); % insert pilot pulse
 end
 vb.next = vb.capture(1); % return to beginning of the block at end
 
@@ -56,9 +56,8 @@ save(filename, '-struct', 'vs');
 [us, chd] = deal(us0, chd0);
 save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
 
-% clear external functions
-clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
+% clear external functions (reset)
+clear RFDataImg RFDataProc RFDataStore imagingProc;
 
-% VSX;
-
-%% 
+%% Launch
+% run VSX;

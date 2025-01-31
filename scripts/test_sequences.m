@@ -32,7 +32,7 @@ seqfsadv.apd(1:Ds:end,:) = eye(xdc.numel / Ds);
 uss = copy(repmat(uss, [1,4]));
 [uss.seq] = deal(seqfsa, seqpw, seqfc, seqfsadv);
 
-% apodization schemes
+% transmit-aperture image apodization schemes
 apod0 = cell([1, numel(uss)]);
 for i = numel(uss):-1:1
     switch i
@@ -47,7 +47,7 @@ end
 % selection
 seq_ind = [3 1]; % sequence index
 [us, apod] = deal(copy(uss(seq_ind)), apod0(seq_ind)); % choose pulse sequence template
-if false && apd_center
+if apd_center && false
     N = min(128, us.xdc.numel); % active aperture size
     apd = circshift([ones(1,N), zeros(1,us.xdc.numel-N)], (us.xdc.numel-N)/2)';
     us.seq.apodization_ = repmat(apd, [1 us.seq.numPulse]);
@@ -61,7 +61,7 @@ vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage); % max power
 % make blocks
 for i = 1:numel(us)
     [vb(i), chd(i)] = QUPS2VSX(us(i), Trans, vres ...
-        ,"apod", apod{i} ...
+        ... ,"apod", apod{i} ... TODO: adapt for tx-apodization
         ,"frames", 4 ...
         ,'vTW', vTW, 'vTPC', vTPC ...
         ,'recon_VSX', i == 1 ... imaging
@@ -100,6 +100,7 @@ end
 % [vb(2), chd(2)] = QUPS2VSX(uss(2), Trans, vres, "frames", 4, 'vTW', vTW); % make VSX block
 % [vb.next] = deal(vb(2).capture(1), vb(1).capture(1)); % start at beginning of alternate sequence
 %}
+
 % DEBUG: test the manual receive delays
 %{
 for i = 1:numel(seq_ind)
@@ -123,29 +124,28 @@ pt1; vs.Media = Media; % add simulation media
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
 %% save 
-filename = char(fullfile("MatFiles","qups-vsx.mat")); 
+filename = char(fullfile(vantageroot, "MatFiles","qups-vsx.mat")); 
 save(filename, '-struct', 'vs');
 
 % save
-save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
+save(fullfile(vantageroot, "MatFiles","qups-conf.mat"), "us", "chd");
 
 % set output save directory
-global VSXOOD_SAVE_DIR;
-VSXOOD_SAVE_DIR = fullfile(pwd, 'tmp');
-if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
+global VERSACE_SAVE_DIR;
+VERSACE_SAVE_DIR = fullfile(pwd, 'tmp');
+if ~exist(VERSACE_SAVE_DIR, 'dir'), mkdir(VERSACE_SAVE_DIR); end
 
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore;
 
-return;
 %% Run
 VSX;
 
 %% Post processing - parse and beamform data from the 2nd block
 
 % grab most recent dataset
-global VSXOOD_SAVE_DIR; %#ok<REDEFGG> % cleared by VSX
-fls = dir(fullfile(VSXOOD_SAVE_DIR, '*_*_*.mat')); % access mat-files in or folder
+global VERSACE_SAVE_DIR; %#ok<REDEFGG> % cleared by VSX
+fls = dir(fullfile(VERSACE_SAVE_DIR, '*_*_*.mat')); % access mat-files in or folder
 dates = reshape(datetime([fls.datenum], 'ConvertFrom', 'datenum'), size(fls)); % file dates
 i = argmax(dates); % most recent file
 vs = load(fullfile(fls(i).folder, fls(i).name)); % data

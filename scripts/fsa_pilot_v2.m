@@ -11,7 +11,7 @@ c0 = 1500;
 % c0 = 1550; 
 % c0 = 1475; 
 
-[xdc, Trans] = TransducerVerasonics(char(xdc_name), "mm"); % % transducer VSX / QUPS
+[xdc, Trans] = TransducerVerasonics(xdc_name, "mm"); % % transducer VSX / QUPS
 lbda = c0*1e-3 / Trans.frequency;
 
 % imaging region (200 wavelengths)
@@ -68,7 +68,7 @@ us.seq = SequenceGeneric('apd', txapd, 'del', txtau, 'c0', seq0.c0, 'numPulse', 
     ,'vTW', vTW, 'vTPC', vTPC ...
     ,"frames", F,'set_foci', false ...
     ,'recon_VSX', true ...
-    ,'recon_custom', false, 'saver_custom', true ...
+    ,'saver_custom', true ...
     ); % ref
 rxbuf = unique([cat(2,vb.capture.rcv).bufnum]);
 
@@ -135,8 +135,8 @@ QUPS_BF_PARAMS.fig = 2; % figure number
 
 
 %% save 
-conf_file = fullfile("MatFiles","qups-conf.mat"); % configuration
-filename = char(fullfile("MatFiles","qups-vsx.mat")); % Vantage
+conf_file =     fullfile(vantageroot, "MatFiles","qups-conf.mat"); % configuration
+filename = char(fullfile(vantageroot, "MatFiles","qups-vsx.mat")); % Vantage
 save(filename, '-struct', 'vs');
 
 % get a copy of this file
@@ -151,21 +151,22 @@ end
 save(conf_file, "us", "chd", "QUPS_BF_PARAMS", "code");
 
 % set save directory for data store (TODO: rename and document)
-global VSXOOD_SAVE_DIR;
-VSXOOD_SAVE_DIR = fullfile(pwd, "data/pilot-pulse-test",string(datetime('now'),'yyMMddHHmmSS')); % make a path relative to the current location
-if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
-copyfile(conf_file, VSXOOD_SAVE_DIR); % save a copy of og files too
-copyfile(filename , VSXOOD_SAVE_DIR);
+global VERSACE_SAVE_DIR;
+VERSACE_SAVE_DIR = fullfile(pwd, "data","pilot-pulse-test",string(datetime('now'),'yyMMddHHmmSS')); % make a path relative to the current location
+if ~exist(VERSACE_SAVE_DIR, 'dir'), mkdir(VERSACE_SAVE_DIR); end
+copyfile(conf_file, VERSACE_SAVE_DIR); % save a copy of og files too
+copyfile(filename , VERSACE_SAVE_DIR);
 
 % clear external functions
-clear bfQUPS ceQUPS;% cEstFSA_RT;
+clear bfQUPS;
 
 %% 
 VSX;
 
 %%
 % because VSX clears the workspace
-global VSXOOD_SAVE_DIR;
+global VERSACE_SAVE_DIR;
 
+% save the data that has been post-processed by `VSX`
 vs = update_vstruct();
-save(fullfile(VSXOOD_SAVE_DIR, 'qups-vsx-post.mat'), '-struct', 'vs');
+save(fullfile(VERSACE_SAVE_DIR, 'qups-vsx-post.mat'), '-struct', 'vs');
