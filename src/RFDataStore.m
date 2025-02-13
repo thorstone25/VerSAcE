@@ -18,6 +18,7 @@ if TOGGLE_RFDataStore
     % save raw data
     save(fnm, '-v7.3', '-nocompression', '-struct', 'vs'); % TODO: maybe save as .dat file?
     
+    if ~isfield(VERSACE_PARAMS, 'verbose'), VERSACE_PARAMS.verbose = false; end
     if VERSACE_PARAMS.verbose, disp("RF data saved to " + fnm); end
     TOGGLE_RFDataStore = false;
 end
