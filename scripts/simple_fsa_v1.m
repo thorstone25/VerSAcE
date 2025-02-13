@@ -114,7 +114,7 @@ QUPS_BF_PARAMS.D = chd.getPassbandFilter(us.xdc.bw);
 QUPS_BF_PARAMS.fig = 1; % figure number
 
 % Save verasonics pre-process variables 
-filename = char(fullfile("MatFiles","qups-vsx.mat")); 
+filename = char(fullfile(vantageroot, "MatFiles","qups-vsx.mat")); 
 save(filename, '-struct', 'vs');
 
 % get a copy of this file
@@ -126,24 +126,23 @@ else
 end
 
 % save
-conf_file = fullfile("MatFiles","qups-conf.mat"); % configuration
+conf_file = fullfile(vantageroot, "MatFiles","qups-conf.mat"); % configuration
 save(conf_file, "us", "chd", "QUPS_BF_PARAMS", "code");
-%save(conf_file, "us", "chd");
 
 % set output save directory
-global VSXOOD_SAVE_DIR;
-VSXOOD_SAVE_DIR = fullfile(pwd, 'tmp');
-if ~exist(VSXOOD_SAVE_DIR, 'dir'), mkdir(VSXOOD_SAVE_DIR); end
+global VERSACE_PARAMS;
+VERSACE_PARAMS.save_dir = fullfile(pwd, 'tmp');
+if ~exist(VERSACE_PARAMS.save_dir, 'dir'), mkdir(VERSACE_PARAMS.save_dir); end
 
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore RFDataCImage imagingProc cEstFSA_RT;
 
-VSX;
+run VSX;
 
 %% Save verasonics post-process variables 
 % This is relevant for future channel data reconstruction by using the
 % verasonics structs
-global VSXOOD_SAVE_DIR; % because VSX clears the workspace
+global VERSACE_PARAMS; % because VSX clears the workspace
 
 vs = update_vstruct();
-save(fullfile(VSXOOD_SAVE_DIR, 'qups-vsx-post.mat'), '-struct', 'vs');
+save(fullfile(VERSACE_PARAMS.save_dir, 'qups-vsx-post.mat'), '-struct', 'vs');

@@ -49,15 +49,15 @@ vs.Media.function = 'movePoints'; % make points move
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
 % save 
-filename = char(fullfile("MatFiles","qups-vsx.mat")); 
+filename = char(fullfile(vantageroot, "MatFiles","qups-vsx.mat")); 
 save(filename, '-struct', 'vs');
 
 % save
 [us, chd] = deal(us0, chd0);
-save(fullfile("MatFiles","qups-conf.mat"), "us", "chd");
+save(fullfile(vantageroot, "MatFiles","qups-conf.mat"), "us", "chd");
 
 % clear external functions (reset)
 clear RFDataImg RFDataProc RFDataStore imagingProc;
 
 %% Launch
-% run VSX;
+run VSX;

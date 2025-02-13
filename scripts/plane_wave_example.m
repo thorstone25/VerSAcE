@@ -7,10 +7,10 @@ xdc_name = "L12-3v"; % choose transducer
 % xdc_name = "P4-2v";
 c0 = 1500; % sound speed
 Trans = computeTrans(struct("name", char(xdc_name), 'units', 'mm')); % transducer
-xdc = Transducer.Verasonics(Trans);
-seq = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -8 : 0.5 : 8);
-seq.apd = [zeros(1,32), ones(1,128), zeros(1,32)]' .* ones(1,seq.numPulse);
-scan = ScanCartesian('x', -20e-3 : 10*20e-6 : 20e-3, 'z', 0 : 20e-6 : 40e-3);
+xdc = Transducer.Verasonics(Trans); % VSX -> QUPS
+seq = SequenceRadial('type', 'PW' , 'c0', c0, 'angles', -8 : 0.5 : 8); % plane waves
+seq.apd = [zeros(1,32), ones(1,128), zeros(1,32)]' .* ones(1,seq.numPulse); % restrict to center channels
+scan = ScanCartesian('x', -20e-3 : 10*20e-6 : 20e-3, 'z', 0 : 20e-6 : 40e-3); % image domain
 us  = UltrasoundSystem('seq', seq, 'xdc', xdc, 'scan', scan, 'fs', 4*xdc.fc);
 % apod = swapdim(apTxParallelogram(us, seq.angles, [-15 15]),4,5);
 
@@ -26,7 +26,7 @@ vTGC = VSXTGC( ...
         'rangeMax', 50*1e-3 ./ us.lambda ...
         );
 
-% make a blocks
+% make a block
 [vb, chd] = QUPS2VSX(us, Trans, vres ...
     ... ,"apod", apod ...
     ,"frames", 2 ...
@@ -38,8 +38,8 @@ vTGC = VSXTGC( ...
     ,'range', [0 50]*1e-3 ... in m
     ); % make VSX block
 
-% quit when done
-vb.next = VSXEvent("info", "quit", "seqControl", VSXSeqControl("command","returnToMatlab"));
+% TODO: quit when done
+% vb.next = VSXEvent("info", "quit", "seqControl", VSXSeqControl("command","returnToMatlab"));
 
 % set peak cut-off for VSX imaging (heuristic)
 % TODO: move to linking? Move to addVSXRecon?
@@ -59,15 +59,15 @@ pt1; vs.Media = Media; % add simulation media
 vs.Resource.Parameters.simulateMode = 1; % 1 to force simulate mode, 0 for hardware
 
 %% save 
-filename = char(fullfile("MatFiles","qups-vsx.mat")); 
+filename = char(fullfile(vantageroot, "MatFiles","qups-vsx.mat")); 
 save(filename, '-struct', 'vs');
 save(replace(filename,"qups-vsx.mat","qups-conf.mat"), "us", "chd");
 
 % set output save directory
-global VERSACE_SAVE_DIR;
+global VERSACE_PARAMS;
 svnm = "f"+round(fc)+"-"+string(datetime("now"), "yyMMdd-HHmmss");
-VERSACE_SAVE_DIR = fullfile(pwd, "data", "freq-est", svnm);
-if ~exist(VERSACE_SAVE_DIR, 'dir'), mkdir(VERSACE_SAVE_DIR); end
+VERSACE_PARAMS.save_dir = fullfile(pwd, "data", "freq-est", svnm);
+if ~exist(VERSACE_PARAMS.save_dir, 'dir'), mkdir(VERSACE_PARAMS.save_dir); end
 
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore;
@@ -76,10 +76,12 @@ clear RFDataImg RFDataProc RFDataStore;
 VSX;
 
 %% Post-processing - parse and save the raw data
-global VERSACE_SAVE_DIR hf; %#ok<REDEFGG> % cleared by VSX
-fl = dir(fullfile(VERSACE_SAVE_DIR, "*.mat")); % get the files
+global VERSACE_PARAMS hf; %#ok<REDEFGG> % cleared by VSX
+fl = dir(fullfile(VERSACE_PARAMS.save_dir, "*.mat")); % get the files
 fl = string(fullfile({fl.folder}, {fl.name})); % all mat-files
-fl = fl(1); % choose first
+if isempty(fl), disp("No files found."); return; % nothing saved
+else, fl = fl(1); % choose first
+end
 
 % load
 load(fl); % everything
@@ -93,12 +95,12 @@ chd0.data = chd0.data(:,1:2:end,:,:) + chd0.data(:,2:2:end,:,:);
 chd = filter(hilbert(singleT(chd0)), chd0.getPassbandFilter(us.xdc.bw));
 
 % image
-us.scan.dx = us.scan.dz;
+[us.scan.dx, us.scan.dz] = deal(us.lambda / 4);
 apod = us.apApertureGrowth(1.5);
 b = DAS(us, chd, 'apod', apod);
 
 % display
-% hf = figure(1); 
+hf = figure(1); 
 imagesc(us.scan, b); 
 dbr b-mode 60;
 
@@ -114,17 +116,17 @@ saveas( hf, replace(fl,".mat",".png"));
 savefig(hf, replace(fl,".mat",".fig"), 'compact');
 
 return;
-%% Post processing - parse and beamform data from the 2nd block
+%% Post processing for multiple blocks: parse and beamform data from the 2nd block
+blk = 2; % vsxblock index
 
 % grab most recent dataset
-global VERSACE_SAVE_DIR; %#ok<REDEFGG> % cleared by VSX
-flds = dir(fullfile(VERSACE_SAVE_DIR, '*_*_*.mat')); % access mat-files in or folder
+global VERSACE_PARAMS; %#ok<REDEFGG> % cleared by VSX
+flds = dir(fullfile(VERSACE_PARAMS.save_dir, '*_*_*.mat')); % access mat-files in or folder
 dates = reshape(datetime([flds.datenum], 'ConvertFrom', 'datenum'), size(flds)); % file dates
 i = argmax(dates); % most recent file
 vs = load(fullfile(flds(i).folder, flds(i).name)); % data
 
 % extract block 2 (the data block)
-blk = 2; % vsxblock index
 evinf = string({vs.Event.info}); % event descriptions
 evi = contains(evinf, "Tx") & contains(evinf, "Blk "+blk) & ~contains(evinf, "Jump"); % filter
 [evir, evit] = deal(evi, evi & contains(evinf, "Frame 1") & contains(evinf, "Ap 1")); % corresponding receive and transmit events

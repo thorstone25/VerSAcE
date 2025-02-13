@@ -1,10 +1,11 @@
 %% Construct a system
 % transducer
-xdc_name = "P4-2v";
+% xdc_name = "P4-2v";
 % xdc_name = "C5-2v";
+% xdc_name = "L7-4";
 % xdc_name = "L11-5";
 % xdc_name = "L12-5 50mm"; % choose transducer
-% xdc_name = "L12-3v"; % choose transducer
+xdc_name = "L12-3v"; % choose transducer
 
 % sound speed
 c0 = 1500; 
@@ -151,22 +152,22 @@ end
 save(conf_file, "us", "chd", "QUPS_BF_PARAMS", "code");
 
 % set save directory for data store (TODO: rename and document)
-global VERSACE_SAVE_DIR;
-VERSACE_SAVE_DIR = fullfile(pwd, "data","pilot-pulse-test",string(datetime('now'),'yyMMddHHmmSS')); % make a path relative to the current location
-if ~exist(VERSACE_SAVE_DIR, 'dir'), mkdir(VERSACE_SAVE_DIR); end
-copyfile(conf_file, VERSACE_SAVE_DIR); % save a copy of og files too
-copyfile(filename , VERSACE_SAVE_DIR);
+global VERSACE_PARAMS;
+VERSACE_PARAMS.save_dir = fullfile(pwd, "data","pilot-pulse-test",string(datetime('now'),'yyMMddHHmmSS')); % make a path relative to the current location
+if ~exist(VERSACE_PARAMS.save_dir, 'dir'), mkdir(VERSACE_PARAMS.save_dir); end
+copyfile(conf_file, VERSACE_PARAMS.save_dir); % save a copy of og files too
+copyfile(filename , VERSACE_PARAMS.save_dir);
 
 % clear external functions
 clear bfQUPS;
 
 %% 
-VSX;
+run VSX;
 
 %%
 % because VSX clears the workspace
-global VERSACE_SAVE_DIR;
+global VERSACE_PARAMS;
 
 % save the data that has been post-processed by `VSX`
 vs = update_vstruct();
-save(fullfile(VERSACE_SAVE_DIR, 'qups-vsx-post.mat'), '-struct', 'vs');
+save(fullfile(VERSACE_PARAMS.save_dir, 'qups-vsx-post.mat'), '-struct', 'vs');

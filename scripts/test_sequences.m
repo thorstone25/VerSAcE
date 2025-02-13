@@ -131,27 +131,28 @@ save(filename, '-struct', 'vs');
 save(fullfile(vantageroot, "MatFiles","qups-conf.mat"), "us", "chd");
 
 % set output save directory
-global VERSACE_SAVE_DIR;
-VERSACE_SAVE_DIR = fullfile(pwd, 'tmp');
-if ~exist(VERSACE_SAVE_DIR, 'dir'), mkdir(VERSACE_SAVE_DIR); end
+global VERSACE_PARAMS;
+VERSACE_PARAMS.save_dir = fullfile(pwd, 'tmp');
+if ~exist(VERSACE_PARAMS.save_dir, 'dir'), mkdir(VERSACE_PARAMS.save_dir); end
 
 % clear external functions
 clear RFDataImg RFDataProc RFDataStore;
 
 %% Run
-VSX;
+run VSX;
 
 %% Post processing - parse and beamform data from the 2nd block
+blk = 2; % vsxblock index
 
 % grab most recent dataset
-global VERSACE_SAVE_DIR; %#ok<REDEFGG> % cleared by VSX
-fls = dir(fullfile(VERSACE_SAVE_DIR, '*_*_*.mat')); % access mat-files in or folder
+global VERSACE_PARAMS; %#ok<REDEFGG> % cleared by VSX
+fls = dir(fullfile(VERSACE_PARAMS.save_dir, '*_*_*.mat')); % access mat-files in or folder
 dates = reshape(datetime([fls.datenum], 'ConvertFrom', 'datenum'), size(fls)); % file dates
 i = argmax(dates); % most recent file
+if isempty(i), disp("No files found"); return; end
 vs = load(fullfile(fls(i).folder, fls(i).name)); % data
 
 % extract block 2 (the data block)
-blk = 2; % vsxblock index
 evinf = string({vs.Event.info}); % event descriptions
 evi = contains(evinf, "Tx") & contains(evinf, "Blk "+blk) & ~contains(evinf, "Jump"); % filter
 [evir, evit] = deal(evi, evi & contains(evinf, "Frame 1") & contains(evinf, "Ap 1")); % corresponding receive and transmit events
@@ -184,7 +185,8 @@ figure("Name", "Post Processing Sanity Check"); tiledlayout('flow');
 nexttile(); imagesc(us.scan, b); dbr b-mode 60; 
 hold on; plot(us.xdc); plot(scat, 'r.');
 ttls = "Tx "+(1:chd.M)'+" : Frm "+(1:size(chd.data,4));
-nexttile(); h = imagesc(chd); animate(chd.data, h, title=ttls(:)');
+nexttile(); h = imagesc(chd); 
+animate(chd.data, h, 'title', ttls(:)', 'loop',false);
 
 
 

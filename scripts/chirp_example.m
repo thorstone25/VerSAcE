@@ -9,7 +9,7 @@ us = UltrasoundSystem('xdc', xdc, 'seq', seq, 'scan', scn);
 %% Create necessary VSX objects (outside of QUPS)
 hashpt = true; % set true if system has HIFU or Extended Transmit support
 vRes = VSXResource(); % global resource definition
-vTPC = VSXTPC('name','Default', 'hv', Trans.maxHighVoltage, 'ishpt', hashpt); % max power
+vTPC = VSXTPC('name','High', 'hv', Trans.maxHighVoltage, 'ishpt', hashpt); % max power
 
 % Define a stepped LFM chirp
 df = 1.0; % step size in MHz
