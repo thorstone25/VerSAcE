@@ -175,27 +175,27 @@ classdef VSXBlock < matlab.mixin.Copyable
             warning_state = warning('off', 'MATLAB:structOnObject');
 
             % convert to structs
-            vsi         = arrayfun(@struct, vblock); % block output indexing
-            Event       = arrayfun(@struct, vEvent);
-            TX          = arrayfun(@struct, vTx);
-            Receive     = arrayfun(@struct, vRcv);
-            Recon       = arrayfun(@struct, vRecon);
-            ReconInfo   = arrayfun(@struct, vReconInfo);
-            Process     = arrayfun(@struct, vProcess);
-            SeqControl  = arrayfun(@struct, vSeqControl);     
-            TW          = arrayfun(@struct, vTw);
-            Resource    = arrayfun(@struct, vResource);
-            PData       = arrayfun(@struct, vPData);
-            TGC         = arrayfun(@struct, vTGC);
-            TPC         = arrayfun(@struct, vTPC); %#ok<PROPLC> 
-            UI          = arrayfun(@struct, vUI); %#ok<PROPLC> 
+            vsi         = vsx2struct(vblock); % block output indexing
+            Event       = vsx2struct(vEvent);
+            TX          = vsx2struct(vTx);
+            Receive     = vsx2struct(vRcv);
+            Recon       = vsx2struct(vRecon);
+            ReconInfo   = vsx2struct(vReconInfo);
+            Process     = vsx2struct(vProcess);
+            SeqControl  = vsx2struct(vSeqControl);     
+            TW          = vsx2struct(vTw);
+            Resource    = vsx2struct(vResource);
+            PData       = vsx2struct(vPData);
+            TGC         = vsx2struct(vTGC);
+            TPC         = vsx2struct(vTPC); %#ok<PROPLC> 
+            UI          = vsx2struct(vUI); %#ok<PROPLC> 
             
             % 
-            Resource.DisplayWindow  = arrayfun(@struct, vDisplayWindow);
-            Resource.RcvBuffer      = arrayfun(@struct, vRcvBuffer);
-            Resource.InterBuffer    = arrayfun(@struct, vInterBuffer);
-            Resource.ImageBuffer    = arrayfun(@struct, vImageBuffer);
-            Resource.Parameters     = arrayfun(@struct, vParameters);            
+            Resource.DisplayWindow  = vsx2struct(vDisplayWindow);
+            Resource.RcvBuffer      = vsx2struct(vRcvBuffer);
+            Resource.InterBuffer    = vsx2struct(vInterBuffer);
+            Resource.ImageBuffer    = vsx2struct(vImageBuffer);
+            Resource.Parameters     = vsx2struct(vParameters);            
             
             % restore warning state
             warning(warning_state);
@@ -217,6 +217,7 @@ classdef VSXBlock < matlab.mixin.Copyable
             % remove all empty properties of TPC
             for f = string(fieldnames(TPC))', TPC = rmifempty(TPC, f); end
             TPC = rmfield(TPC,'ishpt');
+            [TPC.inUse] = deal([]); % VSX BUG: initialize here - work-around for a bug in VSX
 
             %% assign indices
             % record event indices per block
@@ -846,5 +847,12 @@ switch mode
         i = argmax(min(abs(saps - sapd),abs(eaps - eapd))); % max the min dist from aperture start/end to apodization start/end
         j = find(val); 
         i = j(i);
+end
+end
+
+% convert VSX objects to struct, even when empty
+function s = vsx2struct(vobj)
+if isempty(vobj),   s =           struct( vobj); % empty array work-around
+else,               s = arrayfun(@struct, vobj);
 end
 end
