@@ -215,9 +215,11 @@ classdef VSXBlock < matlab.mixin.Copyable
             Resource    = rmifempty(Resource, 'DisplayWindow');
             
             % remove all empty properties of TPC
-            for f = string(fieldnames(TPC))', TPC = rmifempty(TPC, f); end
-            TPC = rmfield(TPC,'ishpt');
-            [TPC.inUse] = deal([]); % VSX BUG: initialize here - work-around for a bug in VSX
+            if isstruct(TPC)
+                for f = string(fieldnames(TPC))', TPC = rmifempty(TPC, f); end
+                TPC = rmfield(TPC,'ishpt');
+                [TPC.inUse] = deal([]); % VSX BUG: initialize here - work-around for a bug in VSX
+            end
 
             %% assign indices
             % record event indices per block
