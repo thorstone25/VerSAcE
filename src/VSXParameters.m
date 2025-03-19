@@ -9,7 +9,7 @@ classdef VSXParameters < matlab.mixin.Copyable
         verbose (1,1) double {mustBeLessThanOrEqual(verbose,3)} = 2
         initializeOnly (1,1) double = 0
         simulateMode (1,1) double = 0
-        % waitForProcessing (1,1) double
+        waitForProcessing (1,1) double = 0
         % UpdateFunction (1,:) char = 'VsUpdate'
         % ProbeConnectorLED double
         % ProbeThermistor
@@ -17,6 +17,12 @@ classdef VSXParameters < matlab.mixin.Copyable
         % numLogDataRecs (1,1) double
         % sizeApod (1,1) double
         % GUI (1,:) char = 'vsx_gui' 
+    end
+    methods
+        function obj = VSXParameters(kwargs)
+            arguments, kwargs.?VSXParameters, end
+            for f = string(fieldnames(kwargs))', obj.(f) = kwargs.(f); end
+        end
     end
 end
 
