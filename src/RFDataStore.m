@@ -3,6 +3,11 @@ global TOGGLE_RFDataStore;
 global VERSACE_PARAMS;
 
 if TOGGLE_RFDataStore
+    % Defaults
+    if ~isfield(VERSACE_PARAMS, 'save_dir'), VERSACE_PARAMS.save_dir = '.'; end
+    if ~isfield(VERSACE_PARAMS, 'verbose'),  VERSACE_PARAMS.verbose = false; end
+    
+
     save_dir = VERSACE_PARAMS.save_dir;
     if ~exist(save_dir, 'dir'), mkdir(save_dir); end % make a directory if non exists
     
