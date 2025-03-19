@@ -310,6 +310,11 @@ if kwargs.prf,
         );
     wait_for_pulse_sequence  = VSXSeqControl('command', 'timeToNextAcq', 'argument', t_last); % max TTNA is 4190000
 else
+    % ensure or coerce wait for processing
+    if ~vResource.Parameters.waitForProcessing && kwargs.frames <= 2
+        warning("VerSAcE:QUPS2VSX:forceWait","Forcing 'waitForProcessing' for 0 PRF with "+kwargs.frames+" frames - to avoid this, set a non-zero PRF.");
+        vResource.Parameters.waitForProcessing = true;
+    end
     wait_for_pulse_sequence = wait_for_tx_pulse; % no PRF requested - use the same wait time
 end    
 transfer_to_host         = VSXSeqControl('command', 'transferToHost');
